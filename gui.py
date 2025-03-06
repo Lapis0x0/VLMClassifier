@@ -449,15 +449,34 @@ class ImageClassifierApp(QMainWindow):
         
         # 如果QSettings中没有配置，尝试从.env加载默认值
         if not config:
-            load_dotenv()
+            # 默认配置为空，防止泄露个人信息
             config = {
-                'api_base_url': os.getenv('API_BASE_URL', ''),
-                'api_key': os.getenv('API_KEY', ''),
-                'model_name': os.getenv('MODEL_NAME', 'qwen-vl-plus-latest'),
-                'classification_prompt': os.getenv('CLASSIFICATION_PROMPT', ''),
-                'valid_categories': os.getenv('VALID_CATEGORIES', '二次元,生活照片,宠物,工作,表情包').split(','),
-                'max_workers': int(os.getenv('MAX_WORKERS', '4'))
+                'api_base_url': '',  # 默认为空，需要用户填写
+                'api_key': '',  # 默认为空，需要用户填写
+                'model_name': 'qwen-vl-plus-latest',  # 默认模型名称
+                'classification_prompt': '请将这张图片分类到以下类别中的一个',  # 默认提示词
+                'valid_categories': '二次元,生活照片,宠物,工作,表情包'.split(','),  # 默认分类类别
+                'max_workers': 4  # 默认并发数
             }
+            
+            # 尝试从环境变量文件加载，如果有的话
+            try:
+                load_dotenv()
+                if os.getenv('API_BASE_URL'):
+                    config['api_base_url'] = os.getenv('API_BASE_URL')
+                if os.getenv('API_KEY'):
+                    config['api_key'] = os.getenv('API_KEY')
+                if os.getenv('MODEL_NAME'):
+                    config['model_name'] = os.getenv('MODEL_NAME')
+                if os.getenv('CLASSIFICATION_PROMPT'):
+                    config['classification_prompt'] = os.getenv('CLASSIFICATION_PROMPT')
+                if os.getenv('VALID_CATEGORIES'):
+                    config['valid_categories'] = os.getenv('VALID_CATEGORIES').split(',')
+                if os.getenv('MAX_WORKERS'):
+                    config['max_workers'] = int(os.getenv('MAX_WORKERS'))
+            except Exception:
+                # 如果加载失败，使用默认配置
+                pass
         
         return config
     
@@ -493,6 +512,11 @@ class ImageClassifierApp(QMainWindow):
         main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(0)
+        
+        # 创建分割器，实现左右可调整宽度
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setObjectName("mainSplitter")
+        self.splitter.setChildrenCollapsible(False)  # 防止完全折叠到看不见
         
         # 左侧分类区域
         left_widget = QWidget()
@@ -568,18 +592,22 @@ class ImageClassifierApp(QMainWindow):
         progress_layout.addWidget(self.progress_bar)
         left_layout.addLayout(progress_layout)
         
-        # 创建布局来单独放置折叠按钮
-        toggle_btn_layout = QVBoxLayout()
-        toggle_btn_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_btn_layout.addStretch()
+        # 右侧配置区域容器
+        self.right_container = QWidget()
+        self.right_container.setObjectName("rightContainer")
+        self.right_container.setVisible(False)  # 初始隐藏右侧容器
+        right_container_layout = QHBoxLayout(self.right_container)
+        right_container_layout.setContentsMargins(0, 0, 0, 0)
+        right_container_layout.setSpacing(0)
         
-        # 侧边栏容器（包含配置面板）
-        self.sidebar_container = QWidget()
-        self.sidebar_container.setObjectName("sidebarContainer")
-        self.sidebar_container.setFixedWidth(40)  # 初始只显示按钮宽度
-        sidebar_layout = QHBoxLayout(self.sidebar_container)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout.setSpacing(0)
+        # 创建控制按钮容器
+        self.toggle_container = QWidget()
+        self.toggle_container.setObjectName("toggleContainer")
+        self.toggle_container.setFixedWidth(40)  # 按钮容器宽度
+        toggle_layout = QVBoxLayout(self.toggle_container)
+        toggle_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_layout.setSpacing(0)
+        toggle_layout.addStretch()
         
         # 折叠按钮
         self.toggle_btn = QToolButton()
@@ -587,8 +615,8 @@ class ImageClassifierApp(QMainWindow):
         self.toggle_btn.setText("▶")  # 右箭头（表示可展开）
         self.toggle_btn.setFixedSize(40, 120)
         self.toggle_btn.clicked.connect(self.toggle_config_panel)
-        toggle_btn_layout.addWidget(self.toggle_btn)
-        toggle_btn_layout.addStretch()
+        toggle_layout.addWidget(self.toggle_btn)
+        toggle_layout.addStretch()
         
         # 右侧配置区域
         self.right_widget = QWidget()
@@ -668,13 +696,16 @@ class ImageClassifierApp(QMainWindow):
         config_scroll.setWidget(config_widget)
         right_layout.addWidget(config_scroll)
         
-        # 添加配置面板到侧边栏容器
-        sidebar_layout.addWidget(self.right_widget)
+        # 将配置面板添加到右侧容器
+        right_container_layout.addWidget(self.right_widget)
+        
+        # 只将左侧面板添加到分割器中
+        self.splitter.addWidget(left_widget)
+        self.splitter.addWidget(self.right_container)
         
         # 添加到主布局
-        main_layout.addWidget(left_widget)
-        main_layout.addLayout(toggle_btn_layout)
-        main_layout.addWidget(self.sidebar_container)
+        main_layout.addWidget(self.splitter)
+        main_layout.addWidget(self.toggle_container)
         
         # 状态栏
         self.statusBar().setObjectName("statusBar")
@@ -702,11 +733,12 @@ class ImageClassifierApp(QMainWindow):
     
     def toggle_config_panel(self):
         """切换配置面板的显示状态"""
-        if self.sidebar_container.width() <= 40:  # 面板隐藏状态
-            self.sidebar_container.setFixedWidth(400)  # 显示面板
+        if not self.right_container.isVisible():  # 如果右侧面板已隐藏
+            self.right_container.setVisible(True)  # 显示右侧容器
+            self.splitter.setSizes([int(self.width() * 0.6), int(self.width() * 0.4)])  # 设置左右宽度比例60:40
             self.toggle_btn.setText("◀")  # 左箭头（表示可折叠）
         else:
-            self.sidebar_container.setFixedWidth(0)  # 完全隐藏面板
+            self.right_container.setVisible(False)  # 隐藏右侧容器
             self.toggle_btn.setText("▶")  # 右箭头（表示可展开）
     
     def load_config_to_panel(self):
@@ -792,7 +824,10 @@ class ImageClassifierApp(QMainWindow):
             QPushButton#dangerButton:hover {
                 background-color: #bb2d3b;
             }
-            QWidget#sidebarContainer {
+            QWidget#toggleContainer {
+                background-color: transparent;
+            }
+            QWidget#rightContainer {
                 background-color: transparent;
             }
             QWidget#rightWidget {
@@ -911,6 +946,14 @@ class ImageClassifierApp(QMainWindow):
             }
             
             /* 滚动条样式 */
+            QSplitter::handle {
+                background-color: #e0e0e0;
+                width: 1px;
+            }
+            QSplitter::handle:hover {
+                background-color: #0d6efd;
+            }
+            
             QScrollBar:vertical {
                 background-color: transparent;
                 width: 8px;
@@ -1065,6 +1108,21 @@ class ImageClassifierApp(QMainWindow):
         """开始分类过程"""
         if not self.images:
             QMessageBox.warning(self, "警告", "请先选择要分类的图片！")
+            return
+            
+        # 检查API配置是否已填写
+        if not self.config['api_base_url'] or not self.config['api_key']:
+            reply = QMessageBox.warning(
+                self, 
+                "API配置缺失", 
+                "请先在右侧面板中填写API配置信息！\n\n您需要填写API基础URL和API密钥才能使用分类功能。",
+                QMessageBox.Ok | QMessageBox.Cancel,
+                QMessageBox.Ok
+            )
+            
+            if reply == QMessageBox.Ok:
+                if not self.right_container.isVisible():
+                    self.toggle_config_panel()  # 自动打开配置面板
             return
             
         if self.classification_thread and self.classification_thread.isRunning():
