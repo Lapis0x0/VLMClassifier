@@ -102,4 +102,4 @@ jobs:
             windows-app/VLMClassifier-*.exe
           draft: false
           prerelease: false
-          generate_release_notes: true
+          # 使用标签消息作为发布说明，而不是自动生成
