@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QToolButton, QSpacerItem)
 from PyQt5.QtCore import QRect, QSize, QPoint
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint, QSettings
-from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QPalette, QColor
+from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QPalette, QColor, QFont
 from image_classifier import ImageClassifier
 from dotenv import load_dotenv
 
@@ -414,20 +414,11 @@ class ImageClassifierApp(QMainWindow):
         self.settings = QSettings("VLMClassifier", "ImageClassifier")
         self.config = self.load_config()
         
-        try:
-            self.classifier = ImageClassifier(
-                api_base_url=self.config.get('api_base_url'),
-                api_key=self.config.get('api_key'),
-                model_name=self.config.get('model_name'),
-                classification_prompt=self.config.get('classification_prompt'),
-                valid_categories=self.config.get('valid_categories'),
-                max_workers=self.config.get('max_workers', 4)
-            )
-            self.categories = self.classifier.valid_categories + ["其他"]
-        except Exception as e:
-            QMessageBox.critical(self, "初始化错误",
-                               f"初始化分类器时出错: {str(e)}\n请检查配置设置。")
-            sys.exit(1)
+        # 初始化分类器相关变量
+        self.classifier = None
+        # 设置默认分类类别
+        default_categories = self.config.get('valid_categories', ['二次元', '生活照片', '宠物', '工作', '表情包'])
+        self.categories = default_categories + ["其他"]
 
         # 确保目录结构
         self.ensure_directories()
@@ -459,8 +450,11 @@ class ImageClassifierApp(QMainWindow):
                 'max_workers': 4  # 默认并发数
             }
             
-            # 尝试从环境变量文件加载，如果有的话
+            # 在打包的应用程序中，我们不使用dotenv模块和.env文件
+            # 这里保留代码仅用于开发环境
             try:
+                # 尝试导入dotenv，如果不可用则跳过
+                from dotenv import load_dotenv
                 load_dotenv()
                 if os.getenv('API_BASE_URL'):
                     config['api_base_url'] = os.getenv('API_BASE_URL')
@@ -474,8 +468,8 @@ class ImageClassifierApp(QMainWindow):
                     config['valid_categories'] = os.getenv('VALID_CATEGORIES').split(',')
                 if os.getenv('MAX_WORKERS'):
                     config['max_workers'] = int(os.getenv('MAX_WORKERS'))
-            except Exception:
-                # 如果加载失败，使用默认配置
+            except (ImportError, Exception):
+                # 如果模块不可用或加载失败，使用默认配置
                 pass
         
         return config
@@ -489,14 +483,27 @@ class ImageClassifierApp(QMainWindow):
 
     def ensure_directories(self):
         """确保必要的目录结构存在"""
-        self.input_dir = os.getenv('INPUT_DIR', 'images/input')
-        self.output_dir = os.getenv('OUTPUT_DIR', 'images/output')
+        # 使用用户文档目录下的应用程序数据目录
+        app_data_dir = os.path.join(os.path.expanduser("~"), "Documents", "VLMClassifier")
         
+        # 创建应用程序数据目录
+        os.makedirs(app_data_dir, exist_ok=True)
+        
+        # 设置输入和输出目录
+        self.input_dir = os.getenv('INPUT_DIR', os.path.join(app_data_dir, 'input'))
+        self.output_dir = os.getenv('OUTPUT_DIR', os.path.join(app_data_dir, 'output'))
+        
+        # 创建输入和输出目录
         os.makedirs(self.input_dir, exist_ok=True)
         os.makedirs(self.output_dir, exist_ok=True)
         
+        # 创建分类目录
         for category in self.categories:
             os.makedirs(os.path.join(self.output_dir, category), exist_ok=True)
+            
+        print(f"应用数据目录: {app_data_dir}")
+        print(f"输入目录: {self.input_dir}")
+        print(f"输出目录: {self.output_dir}")
 
     def setup_ui(self):
         """设置用户界面"""
@@ -681,16 +688,34 @@ class ImageClassifierApp(QMainWindow):
         perf_group.setLayout(perf_layout)
         config_layout.addWidget(perf_group)
         
-        # 保存按钮
+        # 保存按钮 - 放在顶部，使其更加明显
         save_btn_layout = QHBoxLayout()
         save_btn = QPushButton("保存配置")
-        save_btn.setObjectName("configSaveButton")
-        save_btn.setMinimumHeight(40)
+        save_btn.setObjectName("primaryButton")  # 使用主要按钮样式
+        save_btn.setMinimumHeight(50)  # 增加高度
+        save_btn.setMinimumWidth(200)  # 设置最小宽度
+        save_btn.setFont(QFont("Arial", 12))  # 设置字体
+        save_btn.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; border-radius: 5px;")
         save_btn.clicked.connect(self.save_config_from_panel)
         save_btn_layout.addStretch()
         save_btn_layout.addWidget(save_btn)
         save_btn_layout.addStretch()
-        config_layout.addLayout(save_btn_layout)
+        
+        # 添加一个标签，提醒用户保存配置
+        save_hint = QLabel("填写完配置后请点击上方按钮保存")
+        save_hint.setStyleSheet("color: #0d6efd; font-size: 12px;")
+        save_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # 将保存按钮和提示放在配置面板的顶部
+        config_layout.insertLayout(0, save_btn_layout)  # 在最前面插入保存按钮
+        config_layout.insertWidget(1, save_hint)  # 在保存按钮后插入提示
+        
+        # 添加分隔线
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet("background-color: #dee2e6; min-height: 2px;")
+        config_layout.insertWidget(2, separator)  # 在提示后插入分隔线
         
         config_layout.addStretch()
         config_scroll.setWidget(config_widget)
@@ -755,7 +780,7 @@ class ImageClassifierApp(QMainWindow):
         new_config = {
             'api_base_url': self.api_base_url.text().strip(),
             'api_key': self.api_key.text().strip(),
-            'model_name': self.model_name.text().strip(),
+            'model_name': self.model_name.text().strip() or 'qwen-vl-plus-latest',  # 确保有默认值
             'classification_prompt': self.classification_prompt.toPlainText().strip(),
             'valid_categories': [cat.strip() for cat in self.valid_categories.text().split(',') if cat.strip()],
             'max_workers': int(self.max_workers.currentText())
@@ -764,9 +789,44 @@ class ImageClassifierApp(QMainWindow):
         # 保存配置
         self.save_config(new_config)
         
-        # 提示用户重启应用
+        # 如果分类器尚未初始化，则初始化它
+        if not hasattr(self, 'classifier') or self.classifier is None:
+            try:
+                # 初始化分类器
+                self.classifier = ImageClassifier(
+                    api_base_url=new_config.get('api_base_url'),
+                    api_key=new_config.get('api_key'),
+                    model_name=new_config.get('model_name'),
+                    classification_prompt=new_config.get('classification_prompt'),
+                    valid_categories=new_config.get('valid_categories'),
+                    max_workers=new_config.get('max_workers', 4)
+                )
+                # 更新类别列表
+                self.categories = self.classifier.valid_categories + ["其他"]
+                # 确保目录结构存在
+                self.ensure_directories()
+                print("分类器已初始化")
+            except Exception as e:
+                print(f"初始化分类器时出错: {str(e)}")
+        else:
+            # 更新分类器配置
+            try:
+                self.classifier.api_base_url = new_config['api_base_url']
+                self.classifier.api_key = new_config['api_key']
+                self.classifier.model_name = new_config['model_name']
+                self.classifier.classification_prompt = new_config['classification_prompt']
+                self.classifier.valid_categories = new_config['valid_categories']
+                # 更新类别列表
+                self.categories = self.classifier.valid_categories + ["其他"]
+                # 确保目录结构存在
+                self.ensure_directories()
+                print("分类器配置已更新")
+            except Exception as e:
+                print(f"更新分类器配置时出错: {str(e)}")
+        
+        # 提示用户配置已更新
         QMessageBox.information(self, "配置已更新", 
-                              "配置已成功更新！请重启应用以应用新的配置。")
+                              "配置已成功更新！现在可以直接使用新的配置进行分类。")
     
     def apply_styles(self):
         self.setStyleSheet("""
@@ -1111,11 +1171,11 @@ class ImageClassifierApp(QMainWindow):
             return
             
         # 检查API配置是否已填写
-        if not self.config['api_base_url'] or not self.config['api_key']:
+        if not self.config.get('api_base_url') or not self.config.get('api_key') or not self.config.get('classification_prompt'):
             reply = QMessageBox.warning(
                 self, 
                 "API配置缺失", 
-                "请先在右侧面板中填写API配置信息！\n\n您需要填写API基础URL和API密钥才能使用分类功能。",
+                "请先在右侧面板中填写API配置信息！\n\n您需要填写API基础URL、API密钥和分类提示词才能使用分类功能。",
                 QMessageBox.Ok | QMessageBox.Cancel,
                 QMessageBox.Ok
             )
@@ -1130,6 +1190,25 @@ class ImageClassifierApp(QMainWindow):
             self.classification_thread.wait()
             self.start_btn.setText("开始分类")
             self.statusBar().showMessage("分类已停止")
+            return
+
+        # 初始化分类器（如果还没有初始化）
+        try:
+            self.classifier = ImageClassifier(
+                api_base_url=self.config.get('api_base_url'),
+                api_key=self.config.get('api_key'),
+                model_name=self.config.get('model_name'),
+                classification_prompt=self.config.get('classification_prompt'),
+                valid_categories=self.config.get('valid_categories'),
+                max_workers=self.config.get('max_workers', 4)
+            )
+            # 更新类别列表
+            self.categories = self.classifier.valid_categories + ["其他"]
+            # 确保目录结构存在
+            self.ensure_directories()
+        except Exception as e:
+            QMessageBox.critical(self, "初始化错误",
+                               f"初始化分类器时出错: {str(e)}\n请检查配置设置。")
             return
 
         # 禁用相关按钮
@@ -1196,27 +1275,44 @@ class ImageClassifierApp(QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
+    # 添加日志文件
+    import logging
+    import tempfile
     
-    # 设置应用样式
-    app.setStyle('Fusion')
+    # 创建日志目录
+    log_dir = os.path.join(os.path.expanduser("~"), "VLMClassifier_logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "vlmclassifier_error.log")
     
-    # 创建并显示主窗口
-    window = ImageClassifierApp()
-    window.show()
+    # 配置日志
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     
-    sys.exit(app.exec_())
-
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    
-    # 设置应用样式
-    app.setStyle('Fusion')
-    
-    # 创建并显示主窗口
-    window = ImageClassifierApp()
-    window.show()
-    
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        
+        # 设置应用样式
+        app.setStyle('Fusion')
+        
+        # 创建并显示主窗口
+        logging.info("Starting application...")
+        window = ImageClassifierApp()
+        logging.info("Application window created successfully")
+        window.show()
+        logging.info("Window shown")
+        
+        sys.exit(app.exec_())
+    except Exception as e:
+        logging.exception(f"Application crashed with error: {str(e)}")
+        # 创建一个简单的错误窗口
+        error_app = QApplication(sys.argv) if not 'app' in locals() else app
+        error_msg = QMessageBox()
+        error_msg.setIcon(QMessageBox.Critical)
+        error_msg.setText(f"程序出错\n\n{str(e)}")
+        error_msg.setInformativeText(f"错误日志已保存到: {log_file}")
+        error_msg.setWindowTitle("错误")
+        error_msg.exec_()
+        sys.exit(1)

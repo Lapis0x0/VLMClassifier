@@ -36,15 +36,16 @@ class ImageClassifier:
         self.max_image_size = (1024, 1024)  # 最大图片尺寸
         self.jpeg_quality = 85  # JPEG压缩质量
         
-        # 验证必要的配置
-        if not all([self.api_base_url, self.api_key, self.classification_prompt]):
-            raise ValueError("缺少必要的配置：API_BASE_URL, API_KEY, CLASSIFICATION_PROMPT")
-        
-        # 初始化OpenAI客户端
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.api_base_url
-        )
+        # 初始化OpenAI客户端（如果有必要的配置）
+        self.client = None
+        if self.api_base_url and self.api_key:
+            try:
+                self.client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base_url
+                )
+            except Exception as e:
+                print(f"OpenAI客户端初始化失败: {str(e)}")
         
         # 初始化计数器锁
         self.counter_lock = Lock()
@@ -137,6 +138,17 @@ class ImageClassifier:
     def classify_image(self, image_path):
         """使用VL API对单张图片进行分类"""
         try:
+            # 验证必要的配置
+            if not all([self.api_base_url, self.api_key, self.classification_prompt]):
+                raise ValueError("缺少必要的配置：API_BASE_URL, API_KEY, CLASSIFICATION_PROMPT")
+                
+            # 如果客户端未初始化，则初始化
+            if self.client is None:
+                self.client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base_url
+                )
+            
             # 读取并编码图片
             base64_image = self.encode_image(image_path)
             
@@ -162,7 +174,7 @@ class ImageClassifier:
                 ]
             )
             
-            # 从API响应中提取类别并匹配到预定义类别
+            # 从 API响应中提取类别并匹配到预定义类别
             response_text = completion.choices[0].message.content
             category = self.get_closest_category(response_text)
             print(f"图片 {os.path.basename(image_path)} 的原始响应: {response_text}")
