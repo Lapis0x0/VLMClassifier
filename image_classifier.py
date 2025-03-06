@@ -10,29 +10,35 @@ import concurrent.futures
 from threading import Lock
 
 class ImageClassifier:
-    def __init__(self):
-        # 加载环境变量
-        load_dotenv()
+    def __init__(self, api_base_url=None, api_key=None, model_name='qwen-vl-plus-latest', 
+                 classification_prompt=None, valid_categories=None, max_workers=4):
+        # 尝试从环境变量加载默认配置（如果未提供参数）
+        if api_base_url is None or api_key is None or classification_prompt is None:
+            load_dotenv()
         
-        # 获取API配置
-        self.api_base_url = os.getenv('API_BASE_URL')
-        self.api_key = os.getenv('API_KEY')
-        self.model_name = os.getenv('MODEL_NAME', 'qwen-vl-plus-latest')
+        # API配置
+        self.api_base_url = api_base_url or os.getenv('API_BASE_URL')
+        self.api_key = api_key or os.getenv('API_KEY')
+        self.model_name = model_name or os.getenv('MODEL_NAME', 'qwen-vl-plus-latest')
         
-        # 获取分类配置
-        self.classification_prompt = os.getenv('CLASSIFICATION_PROMPT')
-        self.valid_categories = os.getenv('VALID_CATEGORIES', '二次元,生活照片,宠物,工作,表情包').split(',')
+        # 分类配置
+        self.classification_prompt = classification_prompt or os.getenv('CLASSIFICATION_PROMPT')
+        default_categories = '二次元,生活照片,宠物,工作,表情包'
+        if valid_categories is None:
+            self.valid_categories = os.getenv('VALID_CATEGORIES', default_categories).split(',')
+        else:
+            self.valid_categories = valid_categories if isinstance(valid_categories, list) else valid_categories.split(',')
         
         # 并发配置
-        self.max_workers = int(os.getenv('MAX_WORKERS', '4'))
+        self.max_workers = max_workers
         
         # 图片处理配置
         self.max_image_size = (1024, 1024)  # 最大图片尺寸
         self.jpeg_quality = 85  # JPEG压缩质量
         
-        # 验证必要的环境变量
-        if not all([self.api_base_url, self.api_key]):
-            raise ValueError("请在.env文件中设置必要的环境变量：API_BASE_URL, API_KEY")
+        # 验证必要的配置
+        if not all([self.api_base_url, self.api_key, self.classification_prompt]):
+            raise ValueError("缺少必要的配置：API_BASE_URL, API_KEY, CLASSIFICATION_PROMPT")
         
         # 初始化OpenAI客户端
         self.client = OpenAI(

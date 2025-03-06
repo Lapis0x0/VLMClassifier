@@ -2,16 +2,20 @@ import os
 import sys
 import threading
 import shutil
+import json
 from pathlib import Path
 from PIL import Image
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QScrollArea,
                              QFileDialog, QMessageBox, QFrame, QSizePolicy,
-                             QGraphicsDropShadowEffect, QProgressBar, QLayout)
+                             QGraphicsDropShadowEffect, QProgressBar, QLayout,
+                             QLineEdit, QTextEdit, QTabWidget, QComboBox, QFormLayout,
+                             QGroupBox, QDialog, QDialogButtonBox)
 from PyQt5.QtCore import QRect, QSize, QPoint
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint
+from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint, QSettings
 from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QPalette, QColor
 from image_classifier import ImageClassifier
+from dotenv import load_dotenv
 
 class ClassificationThread(QThread):
     """处理图片分类的后台线程"""
@@ -313,6 +317,91 @@ class DropArea(QScrollArea):
             self.files_dropped.emit(files)
 
 
+class ConfigDialog(QDialog):
+    """配置对话框，用于设置API和模型参数"""
+    def __init__(self, parent=None, config=None):
+        super().__init__(parent)
+        self.config = config or {}
+        self.setWindowTitle("配置设置")
+        self.setMinimumWidth(500)
+        self.setup_ui()
+        self.load_config()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # 创建表单布局
+        form_layout = QFormLayout()
+        
+        # API配置组
+        api_group = QGroupBox("API配置")
+        api_layout = QFormLayout()
+        
+        self.api_base_url = QLineEdit()
+        self.api_key = QLineEdit()
+        self.model_name = QLineEdit()
+        
+        api_layout.addRow("API基础URL:", self.api_base_url)
+        api_layout.addRow("API密钥:", self.api_key)
+        api_layout.addRow("模型名称:", self.model_name)
+        
+        api_group.setLayout(api_layout)
+        layout.addWidget(api_group)
+        
+        # 分类配置组
+        class_group = QGroupBox("分类配置")
+        class_layout = QFormLayout()
+        
+        self.classification_prompt = QTextEdit()
+        self.classification_prompt.setMinimumHeight(100)
+        self.valid_categories = QLineEdit()
+        
+        class_layout.addRow("分类提示词:", self.classification_prompt)
+        class_layout.addRow("有效类别(逗号分隔):", self.valid_categories)
+        
+        class_group.setLayout(class_layout)
+        layout.addWidget(class_group)
+        
+        # 性能配置组
+        perf_group = QGroupBox("性能配置")
+        perf_layout = QFormLayout()
+        
+        self.max_workers = QComboBox()
+        for i in range(1, 9):
+            self.max_workers.addItem(str(i))
+        
+        perf_layout.addRow("最大并发数:", self.max_workers)
+        
+        perf_group.setLayout(perf_layout)
+        layout.addWidget(perf_group)
+        
+        # 按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+    
+    def load_config(self):
+        """从配置加载设置"""
+        self.api_base_url.setText(self.config.get('api_base_url', ''))
+        self.api_key.setText(self.config.get('api_key', ''))
+        self.model_name.setText(self.config.get('model_name', 'qwen-vl-plus-latest'))
+        self.classification_prompt.setText(self.config.get('classification_prompt', ''))
+        self.valid_categories.setText(','.join(self.config.get('valid_categories', ['二次元', '生活照片', '宠物', '工作', '表情包'])))
+        self.max_workers.setCurrentText(str(self.config.get('max_workers', 4)))
+    
+    def get_config(self):
+        """获取配置数据"""
+        return {
+            'api_base_url': self.api_base_url.text().strip(),
+            'api_key': self.api_key.text().strip(),
+            'model_name': self.model_name.text().strip(),
+            'classification_prompt': self.classification_prompt.toPlainText().strip(),
+            'valid_categories': [cat.strip() for cat in self.valid_categories.text().split(',') if cat.strip()],
+            'max_workers': int(self.max_workers.currentText())
+        }
+
+
 class ImageClassifierApp(QMainWindow):
     """图片分类器GUI应用"""
     def __init__(self):
@@ -320,12 +409,23 @@ class ImageClassifierApp(QMainWindow):
         self.images = []
         self.classification_thread = None
         
+        # 加载配置
+        self.settings = QSettings("VLMClassifier", "ImageClassifier")
+        self.config = self.load_config()
+        
         try:
-            self.classifier = ImageClassifier()
+            self.classifier = ImageClassifier(
+                api_base_url=self.config.get('api_base_url'),
+                api_key=self.config.get('api_key'),
+                model_name=self.config.get('model_name'),
+                classification_prompt=self.config.get('classification_prompt'),
+                valid_categories=self.config.get('valid_categories'),
+                max_workers=self.config.get('max_workers', 4)
+            )
             self.categories = self.classifier.valid_categories + ["其他"]
         except Exception as e:
             QMessageBox.critical(self, "初始化错误",
-                               f"初始化分类器时出错: {str(e)}\n请检查.env文件中的配置。")
+                               f"初始化分类器时出错: {str(e)}\n请检查配置设置。")
             sys.exit(1)
 
         # 确保目录结构
@@ -333,6 +433,39 @@ class ImageClassifierApp(QMainWindow):
         
         # 设置界面
         self.setup_ui()
+    
+    def load_config(self):
+        """从QSettings加载配置"""
+        config = {}
+        
+        # 尝试从QSettings加载
+        if self.settings.contains("config"):
+            config_str = self.settings.value("config")
+            try:
+                config = json.loads(config_str)
+            except:
+                pass
+        
+        # 如果QSettings中没有配置，尝试从.env加载默认值
+        if not config:
+            load_dotenv()
+            config = {
+                'api_base_url': os.getenv('API_BASE_URL', ''),
+                'api_key': os.getenv('API_KEY', ''),
+                'model_name': os.getenv('MODEL_NAME', 'qwen-vl-plus-latest'),
+                'classification_prompt': os.getenv('CLASSIFICATION_PROMPT', ''),
+                'valid_categories': os.getenv('VALID_CATEGORIES', '二次元,生活照片,宠物,工作,表情包').split(','),
+                'max_workers': int(os.getenv('MAX_WORKERS', '4'))
+            }
+        
+        return config
+    
+    def save_config(self, config):
+        """保存配置到QSettings"""
+        self.config = config
+        config_str = json.dumps(config)
+        self.settings.setValue("config", config_str)
+        self.settings.sync()
 
     def ensure_directories(self):
         """确保必要的目录结构存在"""
@@ -396,7 +529,11 @@ class ImageClassifierApp(QMainWindow):
         self.open_folder_btn.setObjectName("secondaryButton")
         self.open_folder_btn.clicked.connect(self.open_output_folder)
         
-        for btn in [self.select_btn, self.clear_btn, self.start_btn, self.open_folder_btn]:
+        self.config_btn = QPushButton("配置设置")
+        self.config_btn.setObjectName("infoButton")
+        self.config_btn.clicked.connect(self.open_config_dialog)
+        
+        for btn in [self.select_btn, self.clear_btn, self.start_btn, self.open_folder_btn, self.config_btn]:
             btn.setMinimumWidth(130)
             btn.setMinimumHeight(40)
             button_layout.addWidget(btn)
@@ -434,6 +571,20 @@ class ImageClassifierApp(QMainWindow):
         # 应用全局样式
         self.apply_styles()
 
+    def open_config_dialog(self):
+        """打开配置对话框"""
+        dialog = ConfigDialog(self, self.config)
+        if dialog.exec_():
+            # 获取新的配置
+            new_config = dialog.get_config()
+            
+            # 保存配置
+            self.save_config(new_config)
+            
+            # 提示用户重启应用
+            QMessageBox.information(self, "配置已更新", 
+                                  "配置已成功更新！请重启应用以应用新的配置。")
+    
     def apply_styles(self):
         self.setStyleSheet("""
             QWidget#mainWidget {
@@ -489,6 +640,14 @@ class ImageClassifierApp(QMainWindow):
             }
             QPushButton#dangerButton:hover {
                 background-color: #bb2d3b;
+            }
+            QPushButton#infoButton {
+                background-color: #17a2b8;
+                color: white;
+                border: none;
+            }
+            QPushButton#infoButton:hover {
+                background-color: #138496;
             }
             QStatusBar {
                 background-color: white;
