@@ -11,7 +11,8 @@ import sys
 import platform
 import io
 import locale
-import PyInstaller.__main__
+import shutil
+import subprocess
 
 # 设置标准输出编码为UTF-8，解决Windows环境下的编码问题
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -32,32 +33,89 @@ def build_app():
     if not os.path.exists(images_dir):
         os.makedirs(images_dir)
     
-    # 设置PyInstaller参数
-    args = [
-        'gui.py',                      # 主脚本
-        '--name=VLMClassifier',        # 输出文件名
-        '--onefile',                   # 打包成单个文件
-        '--windowed',                  # 不显示控制台窗口
-        '--icon=images/icon.ico' if os.path.exists('images/icon.ico') else None,  # 应用图标
-        '--add-data=README.md:.',      # 添加README文件
-        f'--distpath={os.path.join(project_root, "dist")}',  # 输出目录
-        '--noconfirm',                 # 不要求确认，覆盖已存在的输出
-        '--clean',                     # 清理临时文件
-        '--exclude=.env',              # 明确排除.env文件
+    # 清理之前的构建文件
+    build_dir = os.path.join(project_root, 'build')
+    if os.path.exists(build_dir):
+        print("Cleaning previous build files...")
+        shutil.rmtree(build_dir, ignore_errors=True)
+    
+    dist_dir = os.path.join(project_root, 'dist')
+    if os.path.exists(dist_dir):
+        print("Cleaning previous dist files...")
+        shutil.rmtree(dist_dir, ignore_errors=True)
+        os.makedirs(dist_dir)
+    
+    # 生成spec文件
+    print("Generating spec file...")
+    spec_command = [
+        sys.executable, '-m', 'PyInstaller',
+        '--name=VLMClassifier',
+        '--windowed' if platform.system() != 'Darwin' else '--noconsole',
+        '--add-data=README.md:.',
+        '--exclude-module=.env',
+        '--noupx',
+        '--specpath', project_root,
+        'gui.py'
     ]
     
-    # 移除None的项
-    args = [arg for arg in args if arg is not None]
+    if platform.system() == 'Darwin':
+        spec_command.extend([
+            '--osx-bundle-identifier=com.lapis0x0.vlmclassifier',
+            '--codesign-identity='
+        ])
+    else:
+        spec_command.append('--onefile')
     
-    # 根据操作系统设置特定参数
-    if platform.system() == 'Darwin':  # macOS
-        # 使用当前系统的原生架构，而不是universal2
-        args.append('--codesign-identity=')  # 自动使用默认的签名身份
+    if os.path.exists('images/icon.ico'):
+        spec_command.append('--icon=images/icon.ico')
     
-    print(f"Building VLMClassifier with PyInstaller...")
+    # 执行命令生成spec文件
+    subprocess.run(spec_command, check=True)
     
-    # 执行PyInstaller
-    PyInstaller.__main__.run(args)
+    # 修改spec文件以解决PyQt5符号链接问题
+    spec_file = os.path.join(project_root, 'VLMClassifier.spec')
+    with open(spec_file, 'r', encoding='utf-8') as f:
+        spec_content = f.read()
+    
+    # 添加收集PyQt5和openai模块的代码
+    if 'hiddenimports=[]' in spec_content:
+        spec_content = spec_content.replace(
+            'hiddenimports=[]',
+            'hiddenimports=["PyQt5", "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets", "openai"]'
+        )
+    
+    # 写回修改后的spec文件
+    with open(spec_file, 'w', encoding='utf-8') as f:
+        f.write(spec_content)
+    
+    # 使用修改后的spec文件构建应用
+    print("Building application using modified spec file...")
+    build_command = [
+        sys.executable, '-m', 'PyInstaller',
+        '--clean',
+        '--noconfirm',
+        spec_file
+    ]
+    
+    subprocess.run(build_command, check=True)
+    
+    print("Build completed successfully!")
+    
+    # 如果是macOS，添加额外的清理步骤
+    if platform.system() == 'Darwin':
+        app_path = os.path.join(dist_dir, 'VLMClassifier.app')
+        if os.path.exists(app_path):
+            print("Finalizing macOS application bundle...")
+            # 删除可能导致闪退的文件
+            problematic_dirs = [
+                os.path.join(app_path, 'Contents/MacOS/_internal/PyQt5/Qt5/plugins/platforminputcontexts'),
+                os.path.join(app_path, 'Contents/MacOS/_internal/PyQt5/Qt5/plugins/platformthemes')
+            ]
+            
+            for dir_path in problematic_dirs:
+                if os.path.exists(dir_path):
+                    print(f"Removing problematic directory: {dir_path}")
+                    shutil.rmtree(dir_path, ignore_errors=True)
     
     print(f"Build completed!")
     print(f"Executable located at: {os.path.join(project_root, 'dist', 'VLMClassifier')}")
