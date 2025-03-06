@@ -435,6 +435,12 @@ class ImageClassifierApp(QMainWindow):
             config_str = self.settings.value("config")
             try:
                 config = json.loads(config_str)
+                
+                # 检查是否是发布版本，如果是，清空API密钥
+                if getattr(sys, 'frozen', False):
+                    # 在发布版本中清空API密钥和基础URL
+                    config['api_key'] = ''
+                    config['api_base_url'] = ''
             except:
                 pass
         
