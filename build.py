@@ -9,7 +9,12 @@
 import os
 import sys
 import platform
+import io
+import locale
 import PyInstaller.__main__
+
+# 设置标准输出编码为UTF-8，解决Windows环境下的编码问题
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 def build_app():
     """使用PyInstaller打包应用"""
@@ -18,7 +23,7 @@ def build_app():
     os.chdir(project_root)
     
     # 创建打包所需的目录结构
-    print("确保目录结构存在...")
+    print("Creating directory structure...")
     if not os.path.exists('dist'):
         os.makedirs('dist')
     
@@ -49,13 +54,13 @@ def build_app():
         # 使用当前系统的原生架构，而不是universal2
         args.append('--codesign-identity=')  # 自动使用默认的签名身份
     
-    print(f"正在使用PyInstaller打包VLMClassifier...")
+    print(f"Building VLMClassifier with PyInstaller...")
     
     # 执行PyInstaller
     PyInstaller.__main__.run(args)
     
-    print(f"打包完成！")
-    print(f"可执行文件位于: {os.path.join(project_root, 'dist', 'VLMClassifier')}")
+    print(f"Build completed!")
+    print(f"Executable located at: {os.path.join(project_root, 'dist', 'VLMClassifier')}")
 
 if __name__ == "__main__":
     build_app()
