@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QGroupBox, QDialog, QDialogButtonBox, QSplitter,
                              QToolButton, QSpacerItem)
 from PyQt5.QtCore import QRect, QSize, QPoint
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint, QSettings
+from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint, QSettings, QTimer
 from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QPalette, QColor, QFont
 from image_classifier import ImageClassifier
 from dotenv import load_dotenv
@@ -425,6 +425,9 @@ class ImageClassifierApp(QMainWindow):
         
         # 设置界面
         self.setup_ui()
+        
+        # 应用程序启动后，检查API密钥是否为空，如果为空则自动打开配置面板
+        QTimer.singleShot(500, self.check_api_key_on_startup)
     
     def load_config(self):
         """从QSettings加载配置"""
@@ -437,19 +440,21 @@ class ImageClassifierApp(QMainWindow):
                 config = json.loads(config_str)
                 
                 # 注意：我们不再在这里清空API密钥和基础URL
+                    
+                # 注意：我们不再在这里清空API密钥和基础URL
                 # 这样用户的配置可以正常保存和加载
                 # 我们只在初始打包时确保.env文件中的敏感信息不被包含
             except:
                 pass
         
-        # 如果QSettings中没有配置，尝试从.env加载默认值
+        # 如果QSettings中没有配置，使用预设的默认值
         if not config:
-            # 默认配置为空，防止泄露个人信息
+            # 默认配置
             config = {
-                'api_base_url': '',  # 默认为空，需要用户填写
+                'api_base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',  # 预设阿里云通义千问API地址
                 'api_key': '',  # 默认为空，需要用户填写
                 'model_name': 'qwen-vl-plus-latest',  # 默认模型名称
-                'classification_prompt': '请将这张图片分类到以下类别中的一个',  # 默认提示词
+                'classification_prompt': '请分析这张图片属于哪一类别，只输出类别名称，不要其他解释。类别必须严格从以下选项中选择一个：{categories}',  # 默认提示词
                 'valid_categories': '二次元,生活照片,宠物,工作,表情包'.split(','),  # 默认分类类别
                 'max_workers': 4  # 默认并发数
             }
@@ -477,6 +482,50 @@ class ImageClassifierApp(QMainWindow):
                 pass
         
         return config
+    
+    def clear_config(self):
+        """清除所有配置并重置为默认值"""
+        # 弹出确认对话框
+        reply = QMessageBox.question(
+            self,
+            "清除配置",
+            "您确定要清除所有配置并重置为默认值吗？\n\n"
+            "这将删除您的API密钥和其他所有设置。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # 创建默认配置
+            default_config = {
+                'api_base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',  # 默认阿里云通义千问API地址
+                'api_key': '',  # 空密钥
+                'model_name': 'qwen-vl-plus-latest',  # 默认模型
+                'classification_prompt': '请分析这张图片属于哪一类别，只输出类别名称，不要其他解释。类别必须严格从以下选项中选择一个：{categories}',  # 默认提示词
+                'valid_categories': '二次元,生活照片,宠物,工作,表情包'.split(','),  # 默认分类
+                'max_workers': 4  # 默认并发数
+            }
+            
+            # 清除QSettings
+            self.settings.clear()
+            
+            # 保存默认配置
+            self.config = default_config
+            config_str = json.dumps(default_config)
+            self.settings.setValue("config", config_str)
+            self.settings.sync()
+            
+            # 更新UI中的配置面板
+            self.load_config_to_panel()
+            
+            # 显示成功消息
+            QMessageBox.information(
+                self,
+                "清除成功",
+                "所有配置已成功清除并重置为默认值。\n\n"
+                "请输入您的API密钥后再保存配置。",
+                QMessageBox.Ok
+            )
     
     def save_config(self, config):
         """保存配置到QSettings"""
@@ -703,6 +752,16 @@ class ImageClassifierApp(QMainWindow):
         save_btn.clicked.connect(self.save_config_from_panel)
         save_btn_layout.addStretch()
         save_btn_layout.addWidget(save_btn)
+        
+        # 添加清除配置按钮
+        clear_btn = QPushButton("清除配置")
+        clear_btn.setObjectName("secondaryButton")
+        clear_btn.setMinimumHeight(50)
+        clear_btn.setMinimumWidth(120)
+        clear_btn.setFont(QFont("Arial", 12))
+        clear_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; border-radius: 5px;")
+        clear_btn.clicked.connect(self.clear_config)
+        save_btn_layout.addWidget(clear_btn)
         save_btn_layout.addStretch()
         
         # 添加一个标签，提醒用户保存配置
@@ -760,6 +819,22 @@ class ImageClassifierApp(QMainWindow):
             QMessageBox.information(self, "配置已更新", 
                                   "配置已成功更新！请重启应用以应用新的配置。")
     
+    def check_api_key_on_startup(self):
+        """在应用程序启动时检查API密钥"""
+        if not self.config.get('api_key'):
+            # 如果API密钥为空，显示提示并打开配置面板
+            QMessageBox.information(
+                self,
+                "欢迎使用VLMClassifier",
+                "欢迎使用VLMClassifier图片分类器！\n\n"
+                "请在配置面板中输入您的API密钥以开始使用。\n"
+                "我们已经为您预设了阿里云通义千问API的基础URL。",
+                QMessageBox.Ok
+            )
+            # 打开配置面板
+            if not self.right_container.isVisible():
+                self.toggle_config_panel()
+    
     def toggle_config_panel(self):
         """切换配置面板的显示状态"""
         if not self.right_container.isVisible():  # 如果右侧面板已隐藏
@@ -781,9 +856,26 @@ class ImageClassifierApp(QMainWindow):
     
     def save_config_from_panel(self):
         """从面板保存配置"""
+        # 获取用户输入的API密钥和API基础URL
+        api_key = self.api_key.text().strip()
+        api_base_url = self.api_base_url.text().strip()
+        
+        # 检查API密钥是否为空
+        if not api_key:
+            # 显示错误消息
+            QMessageBox.warning(
+                self,
+                "配置错误",
+                "请输入您的API密钥后再保存配置。\n\n没有API密钥将无法使用图片分类功能。",
+                QMessageBox.Ok
+            )
+            return
+        
+
+        
         new_config = {
-            'api_base_url': self.api_base_url.text().strip(),
-            'api_key': self.api_key.text().strip(),
+            'api_base_url': api_base_url,
+            'api_key': api_key,
             'model_name': self.model_name.text().strip() or 'qwen-vl-plus-latest',  # 确保有默认值
             'classification_prompt': self.classification_prompt.toPlainText().strip(),
             'valid_categories': [cat.strip() for cat in self.valid_categories.text().split(',') if cat.strip()],
