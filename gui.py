@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QFileDialog, QMessageBox, QFrame, QSizePolicy,
                              QGraphicsDropShadowEffect, QProgressBar, QLayout,
                              QLineEdit, QTextEdit, QTabWidget, QComboBox, QFormLayout,
-                             QGroupBox, QDialog, QDialogButtonBox)
+                             QGroupBox, QDialog, QDialogButtonBox, QSplitter,
+                             QToolButton, QSpacerItem)
 from PyQt5.QtCore import QRect, QSize, QPoint
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QMimeData, QPoint, QSettings
 from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QPalette, QColor
@@ -481,7 +482,7 @@ class ImageClassifierApp(QMainWindow):
     def setup_ui(self):
         """设置用户界面"""
         self.setWindowTitle("智能图片分类器")
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(1200, 700)
         
         # 创建主窗口部件
         main_widget = QWidget()
@@ -489,9 +490,16 @@ class ImageClassifierApp(QMainWindow):
         main_widget.setObjectName("mainWidget")
         
         # 主布局
-        main_layout = QVBoxLayout(main_widget)
+        main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(20)
+        main_layout.setSpacing(0)
+        
+        # 左侧分类区域
+        left_widget = QWidget()
+        left_widget.setObjectName("leftWidget")
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 10, 0)
+        left_layout.setSpacing(20)
         
         # 顶部控制区域
         control_frame = QFrame()
@@ -529,11 +537,7 @@ class ImageClassifierApp(QMainWindow):
         self.open_folder_btn.setObjectName("secondaryButton")
         self.open_folder_btn.clicked.connect(self.open_output_folder)
         
-        self.config_btn = QPushButton("配置设置")
-        self.config_btn.setObjectName("infoButton")
-        self.config_btn.clicked.connect(self.open_config_dialog)
-        
-        for btn in [self.select_btn, self.clear_btn, self.start_btn, self.open_folder_btn, self.config_btn]:
+        for btn in [self.select_btn, self.clear_btn, self.start_btn, self.open_folder_btn]:
             btn.setMinimumWidth(130)
             btn.setMinimumHeight(40)
             button_layout.addWidget(btn)
@@ -547,12 +551,12 @@ class ImageClassifierApp(QMainWindow):
         control_shadow.setOffset(0, 2)
         control_frame.setGraphicsEffect(control_shadow)
         
-        main_layout.addWidget(control_frame)
+        left_layout.addWidget(control_frame)
         
         # 图片预览区域
         self.preview_area = DropArea()
         self.preview_area.files_dropped.connect(self.add_images)
-        main_layout.addWidget(self.preview_area)
+        left_layout.addWidget(self.preview_area)
         
         # 进度条
         progress_layout = QHBoxLayout()
@@ -562,11 +566,122 @@ class ImageClassifierApp(QMainWindow):
         self.progress_bar.setFormat("%p%")
         self.progress_bar.hide()
         progress_layout.addWidget(self.progress_bar)
-        main_layout.addLayout(progress_layout)
+        left_layout.addLayout(progress_layout)
+        
+        # 创建布局来单独放置折叠按钮
+        toggle_btn_layout = QVBoxLayout()
+        toggle_btn_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_btn_layout.addStretch()
+        
+        # 侧边栏容器（包含配置面板）
+        self.sidebar_container = QWidget()
+        self.sidebar_container.setObjectName("sidebarContainer")
+        self.sidebar_container.setFixedWidth(40)  # 初始只显示按钮宽度
+        sidebar_layout = QHBoxLayout(self.sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+        
+        # 折叠按钮
+        self.toggle_btn = QToolButton()
+        self.toggle_btn.setObjectName("toggleButton")
+        self.toggle_btn.setText("▶")  # 右箭头（表示可展开）
+        self.toggle_btn.setFixedSize(40, 120)
+        self.toggle_btn.clicked.connect(self.toggle_config_panel)
+        toggle_btn_layout.addWidget(self.toggle_btn)
+        toggle_btn_layout.addStretch()
+        
+        # 右侧配置区域
+        self.right_widget = QWidget()
+        self.right_widget.setObjectName("rightWidget")
+        right_layout = QVBoxLayout(self.right_widget)
+        right_layout.setContentsMargins(10, 0, 10, 0)
+        right_layout.setSpacing(20)
+        
+        # 配置面板
+        config_scroll = QScrollArea()
+        config_scroll.setObjectName("configScroll")
+        config_scroll.setWidgetResizable(True)
+        config_widget = QWidget()
+        config_layout = QVBoxLayout(config_widget)
+        config_layout.setContentsMargins(20, 20, 20, 20)
+        config_layout.setSpacing(15)
+        
+        # 配置标题
+        config_title = QLabel("配置设置")
+        config_title.setObjectName("configTitle")
+        config_layout.addWidget(config_title)
+        
+        # API配置组
+        api_group = QGroupBox("API配置")
+        api_layout = QFormLayout()
+        
+        self.api_base_url = QLineEdit()
+        self.api_key = QLineEdit()
+        self.model_name = QLineEdit()
+        
+        api_layout.addRow("API基础URL:", self.api_base_url)
+        api_layout.addRow("API密钥:", self.api_key)
+        api_layout.addRow("模型名称:", self.model_name)
+        
+        api_group.setLayout(api_layout)
+        config_layout.addWidget(api_group)
+        
+        # 分类配置组
+        class_group = QGroupBox("分类配置")
+        class_layout = QFormLayout()
+        
+        self.classification_prompt = QTextEdit()
+        self.classification_prompt.setMinimumHeight(100)
+        self.valid_categories = QLineEdit()
+        
+        class_layout.addRow("分类提示词:", self.classification_prompt)
+        class_layout.addRow("有效类别(逗号分隔):", self.valid_categories)
+        
+        class_group.setLayout(class_layout)
+        config_layout.addWidget(class_group)
+        
+        # 性能配置组
+        perf_group = QGroupBox("性能配置")
+        perf_layout = QFormLayout()
+        
+        self.max_workers = QComboBox()
+        for i in range(1, 9):
+            self.max_workers.addItem(str(i))
+        
+        perf_layout.addRow("最大并发数:", self.max_workers)
+        
+        perf_group.setLayout(perf_layout)
+        config_layout.addWidget(perf_group)
+        
+        # 保存按钮
+        save_btn_layout = QHBoxLayout()
+        save_btn = QPushButton("保存配置")
+        save_btn.setObjectName("configSaveButton")
+        save_btn.setMinimumHeight(40)
+        save_btn.clicked.connect(self.save_config_from_panel)
+        save_btn_layout.addStretch()
+        save_btn_layout.addWidget(save_btn)
+        save_btn_layout.addStretch()
+        config_layout.addLayout(save_btn_layout)
+        
+        config_layout.addStretch()
+        config_scroll.setWidget(config_widget)
+        right_layout.addWidget(config_scroll)
+        
+        # 添加配置面板到侧边栏容器
+        sidebar_layout.addWidget(self.right_widget)
+        
+        # 添加到主布局
+        main_layout.addWidget(left_widget)
+        main_layout.addLayout(toggle_btn_layout)
+        main_layout.addWidget(self.sidebar_container)
         
         # 状态栏
         self.statusBar().setObjectName("statusBar")
         self.statusBar().showMessage("就绪")
+        
+        # 加载配置到面板
+        self.load_config_to_panel()
         
         # 应用全局样式
         self.apply_styles()
@@ -584,6 +699,42 @@ class ImageClassifierApp(QMainWindow):
             # 提示用户重启应用
             QMessageBox.information(self, "配置已更新", 
                                   "配置已成功更新！请重启应用以应用新的配置。")
+    
+    def toggle_config_panel(self):
+        """切换配置面板的显示状态"""
+        if self.sidebar_container.width() <= 40:  # 面板隐藏状态
+            self.sidebar_container.setFixedWidth(400)  # 显示面板
+            self.toggle_btn.setText("◀")  # 左箭头（表示可折叠）
+        else:
+            self.sidebar_container.setFixedWidth(0)  # 完全隐藏面板
+            self.toggle_btn.setText("▶")  # 右箭头（表示可展开）
+    
+    def load_config_to_panel(self):
+        """加载配置到面板"""
+        self.api_base_url.setText(self.config.get('api_base_url', ''))
+        self.api_key.setText(self.config.get('api_key', ''))
+        self.model_name.setText(self.config.get('model_name', 'qwen-vl-plus-latest'))
+        self.classification_prompt.setText(self.config.get('classification_prompt', ''))
+        self.valid_categories.setText(','.join(self.config.get('valid_categories', [])))
+        self.max_workers.setCurrentText(str(self.config.get('max_workers', 4)))
+    
+    def save_config_from_panel(self):
+        """从面板保存配置"""
+        new_config = {
+            'api_base_url': self.api_base_url.text().strip(),
+            'api_key': self.api_key.text().strip(),
+            'model_name': self.model_name.text().strip(),
+            'classification_prompt': self.classification_prompt.toPlainText().strip(),
+            'valid_categories': [cat.strip() for cat in self.valid_categories.text().split(',') if cat.strip()],
+            'max_workers': int(self.max_workers.currentText())
+        }
+        
+        # 保存配置
+        self.save_config(new_config)
+        
+        # 提示用户重启应用
+        QMessageBox.information(self, "配置已更新", 
+                              "配置已成功更新！请重启应用以应用新的配置。")
     
     def apply_styles(self):
         self.setStyleSheet("""
@@ -641,13 +792,105 @@ class ImageClassifierApp(QMainWindow):
             QPushButton#dangerButton:hover {
                 background-color: #bb2d3b;
             }
-            QPushButton#infoButton {
-                background-color: #17a2b8;
+            QWidget#sidebarContainer {
+                background-color: transparent;
+            }
+            QWidget#rightWidget {
+                background-color: white;
+                border-left: none;
+                color: #333333;
+            }
+            QToolButton#toggleButton {
+                background-color: #0d6efd;
+                border: 2px solid #0b5ed7;
+                border-radius: 5px;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                margin: 0;
+            }
+            QToolButton#toggleButton:hover {
+                background-color: #0b5ed7;
+                color: white;
+            }
+            QLabel#configTitle {
+                font-size: 22px;
+                font-weight: bold;
+                color: #0d6efd;
+                margin-bottom: 15px;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                margin-top: 1.5em;
+                padding-top: 1.5em;
+                color: #333333;
+                background-color: #f8f9fa;
+                padding: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 8px;
+                color: #0d6efd;
+                font-size: 14px;
+                background-color: #f8f9fa;
+            }
+            QScrollArea#configScroll {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollArea#configScroll QWidget {
+                background-color: white;
+            }
+            QLineEdit, QTextEdit, QComboBox {
+                padding: 10px;
+                border: 1px solid #ced4da;
+                border-radius: 6px;
+                background-color: white;
+                color: #333333;
+                selection-background-color: #0d6efd;
+                font-size: 13px;
+                margin-top: 2px;
+                margin-bottom: 8px;
+            }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
+                border-color: #0d6efd;
+                outline: 0;
+                background-color: white;
+                border-width: 2px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 25px;
+                border-left: 1px solid #ced4da;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+            }
+            QComboBox::down-arrow {
+                width: 14px;
+                height: 14px;
+            }
+            QWidget#rightWidget QLabel {
+                color: #333333;
+                font-size: 13px;
+                font-weight: bold;
+                margin-top: 5px;
+            }
+            QPushButton#configSaveButton {
+                background-color: #0d6efd;
                 color: white;
                 border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 8px 20px;
+                min-width: 150px;
             }
-            QPushButton#infoButton:hover {
-                background-color: #138496;
+            QPushButton#configSaveButton:hover {
+                background-color: #0b5ed7;
             }
             QStatusBar {
                 background-color: white;
@@ -665,6 +908,67 @@ class ImageClassifierApp(QMainWindow):
             QProgressBar::chunk {
                 background-color: #0d6efd;
                 border-radius: 8px;
+            }
+            
+            /* 滚动条样式 */
+            QScrollBar:vertical {
+                background-color: transparent;
+                width: 8px;
+                margin: 0px;
+                border-radius: 4px;
+            }
+            
+            QScrollBar::handle:vertical {
+                background-color: #d1d1d1;
+                min-height: 30px;
+                border-radius: 4px;
+            }
+            
+            QScrollBar::handle:vertical:hover {
+                background-color: #0d6efd;
+            }
+            
+            QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical {
+                height: 0px;
+                background: none;
+            }
+            
+            QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
+                background: none;
+            }
+            
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+            
+            QScrollBar:horizontal {
+                background-color: transparent;
+                height: 8px;
+                margin: 0px;
+                border-radius: 4px;
+            }
+            
+            QScrollBar::handle:horizontal {
+                background-color: #d1d1d1;
+                min-width: 30px;
+                border-radius: 4px;
+            }
+            
+            QScrollBar::handle:horizontal:hover {
+                background-color: #0d6efd;
+            }
+            
+            QScrollBar::sub-line:horizontal, QScrollBar::add-line:horizontal {
+                width: 0px;
+                background: none;
+            }
+            
+            QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal {
+                background: none;
+            }
+            
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: none;
             }
         """)
 
