@@ -76,10 +76,26 @@ CLASSIFICATION_PROMPT=your_custom_prompt
 ### 下载预构建版本（推荐）
 
 1. 访问[GitHub Releases页面](https://github.com/Lapis0x0/VLMClassifier/releases)下载最新版本
+
 2. 根据您的操作系统选择相应的安装包：
-   - macOS用户：下载`VLMClassifier.dmg`文件，双击打开，然后将应用拖到Applications文件夹
-   - Windows用户：下载`VLMClassifier-vX.X.X-win64.exe`文件，双击运行
-3. 首次运行时，您需要在配置面板中输入您的API配置信息
+
+   **macOS用户**:
+   - 下载`VLMClassifier-Installer.dmg`文件
+   - 双击打开DMG文件
+   - 在打开的窗口中，将`VLMClassifier.app`拖到“应用程序”文件夹的快捷方式中
+   - 弹出DMG卷
+   - 从启动台或应用程序文件夹中启动`VLMClassifier`
+   
+   **Windows用户**:
+   - 下载`VLMClassifier-vX.X.X-win64.exe`文件
+   - 双击运行可执行文件
+   - 按照安装向导完成安装
+
+3. 首次运行时，您需要在配置面板中输入您的API配置信息：
+   - API密钥（必填）
+   - API基础URL（默认为阿里云通义千问API地址）
+   - 模型名称（默认为qwen-vl-plus-latest）
+   - 分类提示词和有效类别（可使用默认值）
 
 ### 命令行模式（开发者）
 

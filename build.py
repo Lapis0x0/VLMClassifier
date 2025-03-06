@@ -117,8 +117,37 @@ def build_app():
                     print(f"Removing problematic directory: {dir_path}")
                     shutil.rmtree(dir_path, ignore_errors=True)
     
+    # 如果是macOS，创建DMG安装包
+    if platform.system() == 'Darwin':
+        app_path = os.path.join(dist_dir, 'VLMClassifier.app')
+        if os.path.exists(app_path):
+            print("Creating DMG installer...")
+            dmg_path = os.path.join(dist_dir, 'VLMClassifier-Installer.dmg')
+            
+            # 如果已存在DMG，先删除
+            if os.path.exists(dmg_path):
+                os.remove(dmg_path)
+            
+            # 创建DMG安装包
+            try:
+                # 使用hdiutil创建DMG
+                subprocess.run([
+                    'hdiutil', 'create', 
+                    '-volname', 'VLMClassifier Installer', 
+                    '-srcfolder', app_path, 
+                    '-ov', dmg_path,
+                    '-format', 'UDZO'
+                ], check=True)
+                print(f"DMG installer created at: {dmg_path}")
+            except Exception as e:
+                print(f"Failed to create DMG: {e}")
+    
     print(f"Build completed!")
-    print(f"Executable located at: {os.path.join(project_root, 'dist', 'VLMClassifier')}")
+    if platform.system() == 'Darwin':
+        print(f"Application bundle located at: {os.path.join(project_root, 'dist', 'VLMClassifier.app')}")
+        print(f"DMG installer located at: {os.path.join(project_root, 'dist', 'VLMClassifier-Installer.dmg')}")
+    else:
+        print(f"Executable located at: {os.path.join(project_root, 'dist', 'VLMClassifier')}")
 
 if __name__ == "__main__":
     build_app()

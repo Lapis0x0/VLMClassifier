@@ -30,23 +30,26 @@ jobs:
       - name: Build macOS app
         run: |
           python build.py
-
-      - name: Create DMG
-        run: |
-          # 创建临时目录
-          mkdir -p dist/dmg
-          # 复制应用到临时目录
-          cp -r dist/VLMClassifier.app dist/dmg/
-          # 创建指向应用程序文件夹的符号链接
-          ln -s /Applications dist/dmg/Applications
-          # 创建DMG文件
-          hdiutil create -volname "VLMClassifier" -srcfolder dist/dmg -ov -format UDZO dist/VLMClassifier.dmg
+          # 检查DMG文件是否已经生成
+          if [ ! -f "dist/VLMClassifier-Installer.dmg" ]; then
+            echo "DMG file was not created by build.py, creating it manually"
+            # 创建临时目录
+            mkdir -p dist/dmg
+            # 复制应用到临时目录
+            cp -r dist/VLMClassifier.app dist/dmg/
+            # 创建指向应用程序文件夹的符号链接
+            ln -s /Applications dist/dmg/Applications
+            # 创建DMG文件
+            hdiutil create -volname "VLMClassifier Installer" -srcfolder dist/dmg -ov -format UDZO dist/VLMClassifier-Installer.dmg
+          else
+            echo "Using DMG file created by build.py"
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: dist/VLMClassifier.dmg
+          path: dist/VLMClassifier-Installer.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -98,7 +101,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            macos-app/VLMClassifier.dmg
+            macos-app/VLMClassifier-Installer.dmg
             windows-app/VLMClassifier-*.exe
           draft: false
           prerelease: false
