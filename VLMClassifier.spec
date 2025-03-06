@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('README.md', '.')],
-    hiddenimports=[],
+    hiddenimports=["PyQt5", "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets", "openai"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -19,16 +19,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='VLMClassifier',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -36,9 +33,18 @@ exe = EXE(
     codesign_identity='',
     entitlements_file=None,
 )
-app = BUNDLE(
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='VLMClassifier',
+)
+app = BUNDLE(
+    coll,
     name='VLMClassifier.app',
     icon=None,
-    bundle_identifier=None,
+    bundle_identifier='com.lapis0x0.vlmclassifier',
 )
