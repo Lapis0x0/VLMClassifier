@@ -39,7 +39,7 @@ jobs:
           hdiutil create -volname "VLMClassifier" -srcfolder dist/dmg -ov -format UDZO dist/VLMClassifier.dmg
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-app
           path: dist/VLMClassifier.dmg
@@ -72,7 +72,7 @@ jobs:
           Rename-Item -Path "dist\VLMClassifier.exe" -NewName "VLMClassifier-$tag-win64.exe"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-app
           path: dist/VLMClassifier-*.exe
@@ -132,7 +132,7 @@ jobs:
           ./appimagetool-x86_64.AppImage AppDir dist/VLMClassifier-$TAG-x86_64.AppImage
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-app
           path: dist/VLMClassifier-*.AppImage
@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
 
       - name: Display structure of downloaded files
         run: ls -R
