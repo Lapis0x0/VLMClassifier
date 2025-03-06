@@ -77,68 +77,10 @@ jobs:
           name: windows-app
           path: dist/VLMClassifier-*.exe
 
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          sudo apt-get update
-          sudo apt-get install -y python3-pyqt5
-
-      - name: Build Linux executable
-        run: |
-          python build.py
-
-      - name: Package as AppImage
-        run: |
-          # 创建AppDir结构
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          
-          # 复制可执行文件
-          cp dist/VLMClassifier AppDir/usr/bin/
-          
-          # 创建desktop文件
-          echo "[Desktop Entry]" > AppDir/usr/share/applications/VLMClassifier.desktop
-          echo "Name=VLMClassifier" >> AppDir/usr/share/applications/VLMClassifier.desktop
-          echo "Exec=VLMClassifier" >> AppDir/usr/share/applications/VLMClassifier.desktop
-          echo "Icon=VLMClassifier" >> AppDir/usr/share/applications/VLMClassifier.desktop
-          echo "Type=Application" >> AppDir/usr/share/applications/VLMClassifier.desktop
-          echo "Categories=Utility;" >> AppDir/usr/share/applications/VLMClassifier.desktop
-          
-          # 如果有图标，复制图标
-          if [ -f "images/icon.png" ]; then
-            cp images/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/VLMClassifier.png
-          fi
-          
-          # 下载AppImage工具
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          
-          # 创建AppImage
-          TAG="${{ github.ref_name }}"
-          ./appimagetool-x86_64.AppImage AppDir dist/VLMClassifier-$TAG-x86_64.AppImage
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-app
-          path: dist/VLMClassifier-*.AppImage
 
   create-release:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -154,7 +96,6 @@ jobs:
           files: |
             macos-app/VLMClassifier.dmg
             windows-app/VLMClassifier-*.exe
-            linux-app/VLMClassifier-*.AppImage
           draft: false
           prerelease: false
           generate_release_notes: true
