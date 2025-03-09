@@ -33,3 +33,4 @@ images/output/*
 # package
 dist/
 build/
+frontend/node_modules

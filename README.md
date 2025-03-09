@@ -1,6 +1,6 @@
-# VLM Image Classifier
+# VLM Image Classifier-ReNew
 
-这是一个使用视觉语言模型(VLM)对图片进行自动分类的Python程序。该程序通过调用VLM API来分析图片内容并进行分类，提供了直观的图形用户界面(GUI)，方便用户操作。
+这是一个使用视觉语言模型(VLM)对图片进行自动分类的Python程序。该程序通过调用VLM API来分析图片内容并进行分类，使用next.js来重构前端页面
 
 ## 功能特点
 
