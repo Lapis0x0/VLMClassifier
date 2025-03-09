@@ -37,5 +37,5 @@ build/
 frontend/node_modules
 
 # Next.js 构建输出
-frontend/.next/
 frontend/out/
+frontend/.next
