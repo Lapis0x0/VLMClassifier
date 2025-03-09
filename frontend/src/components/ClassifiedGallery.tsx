@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import config from '../config';
 
 type ClassifiedImage = {
   filename: string;
@@ -19,7 +20,7 @@ interface ClassifiedGalleryProps {
   apiBaseUrl: string;
 }
 
-export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps) {
+export default function ClassifiedGallery({ apiBaseUrl = config.apiBaseUrl }: Partial<ClassifiedGalleryProps>) {
   const [classifiedImages, setClassifiedImages] = useState<ClassifiedImagesData>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
+import config from '../config';
 
 interface ImageUploaderProps {
   onImagesAdded: (files: File[]) => void;
@@ -20,13 +21,57 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesAdded, disabled =
     }
   }, [onImagesAdded]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
     },
-    disabled
+    disabled,
+    noClick: config.isTauri, // 在Tauri应用中禁用点击打开文件选择器，改为使用按钮
+    noKeyboard: config.isTauri, // 在Tauri应用中禁用键盘操作
+    preventDropOnDocument: false // 允许拖放到整个文档
   });
+  
+  // 为Tauri应用添加全局拖放事件处理
+  useEffect(() => {
+    if (config.isTauri && !disabled) {
+      const handleDragOver = (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      };
+      
+      const handleDragLeave = (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+      };
+      
+      const handleDrop = (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        
+        if (e.dataTransfer && e.dataTransfer.files) {
+          const files = Array.from(e.dataTransfer.files);
+          const imageFiles = files.filter(file => file.type.startsWith('image/'));
+          if (imageFiles.length > 0) {
+            onImagesAdded(imageFiles);
+          }
+        }
+      };
+      
+      document.addEventListener('dragover', handleDragOver);
+      document.addEventListener('dragleave', handleDragLeave);
+      document.addEventListener('drop', handleDrop);
+      
+      return () => {
+        document.removeEventListener('dragover', handleDragOver);
+        document.removeEventListener('dragleave', handleDragLeave);
+        document.removeEventListener('drop', handleDrop);
+      };
+    }
+  }, [config.isTauri, disabled, onImagesAdded]);
 
   return (
     <div 
@@ -59,11 +104,24 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesAdded, disabled =
             <p className="font-medium">松开鼠标上传图片</p>
           ) : (
             <>
-              <p className="font-medium">拖放图片到此处，或点击选择图片</p>
+              <p className="font-medium">{config.isTauri ? '拖放图片到此处' : '拖放图片到此处，或点击选择图片'}</p>
               <p className="text-sm text-gray-500 mt-1">支持JPG、PNG和GIF图片</p>
             </>
           )}
         </div>
+        
+        {config.isTauri && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              open();
+            }}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            disabled={disabled}
+          >
+            选择图片
+          </button>
+        )}
       </div>
     </div>
   );

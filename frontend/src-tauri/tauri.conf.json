@@ -1,0 +1,64 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "VLM分类器",
+  "version": "0.1.0",
+  "identifier": "com.vlmclassifier.app",
+  "build": {
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "VLM分类器",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "../../backend"
+    ],
+    "externalBin": []
+  },
+  "plugins": {
+    "shell": {
+      "open": true,
+      "scope": {
+        "allow": [
+          { "name": "start-backend", "cmd": "bash", "args": ["-c", "cd ${resourcePath}/backend && bash ./start_backend.sh"] },
+          { "name": "run-python", "cmd": "python", "args": true }
+        ]
+      }
+    },
+    "fs": {
+      "scope": {
+        "allow": ["**"]
+      }
+    },
+    "path": {
+      "all": true
+    },
+    "process": {
+      "all": true
+    }
+  }
+}
