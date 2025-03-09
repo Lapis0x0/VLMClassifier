@@ -41,3 +41,5 @@ frontend/out/
 frontend/.next
 frontend/.next/
 frontend/.next/cache/
+frontend/.next/cache/*
+frontend/.next/trace
