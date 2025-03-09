@@ -448,6 +448,53 @@ async def update_config(new_config: ConfigModel):
     
     return {"success": init_success, "config": config}
 
+@app.post("/reclassify-image")
+async def reclassify_image(filename: str, source_category: str, target_category: str):
+    """将图片从一个类别移动到另一个类别"""
+    # 验证类别是否有效
+    if source_category not in config.valid_categories:
+        raise HTTPException(status_code=400, detail=f"源类别 '{source_category}' 不存在")
+    if target_category not in config.valid_categories:
+        raise HTTPException(status_code=400, detail=f"目标类别 '{target_category}' 不存在")
+    
+    # 构建源文件和目标文件路径
+    source_path = OUTPUT_DIR / source_category / filename
+    target_dir = OUTPUT_DIR / target_category
+    target_path = target_dir / filename
+    
+    # 检查源文件是否存在
+    if not source_path.exists() or not source_path.is_file():
+        raise HTTPException(status_code=404, detail=f"文件 '{filename}' 在类别 '{source_category}' 中不存在")
+    
+    # 确保目标目录存在
+    target_dir.mkdir(exist_ok=True)
+    
+    try:
+        # 如果目标文件已存在，生成一个新的文件名
+        if target_path.exists():
+            # 提取原始文件名和扩展名
+            name_parts = filename.rsplit('.', 1)
+            base_name = name_parts[0]
+            extension = name_parts[1] if len(name_parts) > 1 else ''
+            
+            # 生成新文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_filename = f"{base_name}_{timestamp}.{extension}" if extension else f"{base_name}_{timestamp}"
+            target_path = target_dir / new_filename
+        
+        # 移动文件
+        shutil.move(str(source_path), str(target_path))
+        
+        return {
+            "success": True,
+            "message": f"图片已从 '{source_category}' 移动到 '{target_category}'",
+            "old_path": str(source_path),
+            "new_path": str(target_path),
+            "new_url": f"/images/{target_category}/{target_path.name}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"移动图片时出错: {str(e)}")
+
 @app.get("/config")
 async def get_config():
     """获取当前配置"""

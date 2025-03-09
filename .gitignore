@@ -29,7 +29,8 @@ images/input/*
 images/output/*
 !images/input/.gitkeep
 !images/output/.gitkeep
-
+backend/classified/*
+!backend/classified/.gitkeep
 # package
 dist/
 build/

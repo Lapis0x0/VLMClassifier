@@ -31,6 +31,15 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
   const [showImageModal, setShowImageModal] = useState(false);
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<{[category: string]: number}>({});
+  const [targetCategory, setTargetCategory] = useState<string>('');
+  const [reclassifying, setReclassifying] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState<string | null>(null);
+  const [reclassifySuccess, setReclassifySuccess] = useState<string | null>(null);
+  const [draggedImage, setDraggedImage] = useState<ClassifiedImage | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [contextMenuImage, setContextMenuImage] = useState<ClassifiedImage | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // 获取已分类的图片
   const fetchClassifiedImages = async () => {
@@ -129,6 +138,141 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
   const closeImageModal = () => {
     setShowImageModal(false);
     setSelectedImage(null);
+    setTargetCategory('');
+    setReclassifyError(null);
+    setReclassifySuccess(null);
+  };
+  
+  // 点击页面任何地方关闭右键菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // 处理右键点击事件
+  const handleContextMenu = (event: React.MouseEvent, image: ClassifiedImage) => {
+    event.preventDefault();
+    setContextMenuImage(image);
+    setShowContextMenu(true);
+    setContextMenuPosition({ 
+      x: event.clientX, 
+      y: event.clientY 
+    });
+  };
+
+  // 处理拖拽开始
+  const handleDragStart = (image: ClassifiedImage) => {
+    setDraggedImage(image);
+  };
+
+  // 处理拖拽结束
+  const handleDragEnd = () => {
+    setDraggedImage(null);
+  };
+
+  // 处理拖放目标的拖拽悬停
+  const handleDragOver = (event: React.DragEvent, category: string) => {
+    event.preventDefault();
+  };
+
+  // 处理拖放目标的放置
+  const handleDrop = async (event: React.DragEvent, targetCategory: string) => {
+    event.preventDefault();
+    if (!draggedImage) return;
+
+    // 从URL中提取当前类别
+    const urlParts = draggedImage.url.split('/');
+    const sourceCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+
+    // 如果目标类别与源类别相同，不执行操作
+    if (sourceCategory === targetCategory) return;
+
+    // 调用重新分类函数
+    await reclassifyImageToCategory(draggedImage, sourceCategory, targetCategory);
+  };
+
+  // 从右键菜单重新分类
+  const handleContextMenuReclassify = async (targetCategory: string) => {
+    if (!contextMenuImage) return;
+
+    // 从URL中提取当前类别
+    const urlParts = contextMenuImage.url.split('/');
+    const sourceCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+
+    // 如果目标类别与源类别相同，不执行操作
+    if (sourceCategory === targetCategory) return;
+
+    // 调用重新分类函数
+    await reclassifyImageToCategory(contextMenuImage, sourceCategory, targetCategory);
+    setShowContextMenu(false);
+  };
+
+  // 重新分类图片到指定类别的通用函数
+  const reclassifyImageToCategory = async (image: ClassifiedImage, sourceCategory: string, targetCategory: string) => {
+    setReclassifying(true);
+    setReclassifyError(null);
+    setReclassifySuccess(null);
+    
+    try {
+      const params = new URLSearchParams({
+        filename: image.filename,
+        source_category: sourceCategory,
+        target_category: targetCategory
+      });
+      
+      const response = await fetch(`${apiBaseUrl}/reclassify-image?${params}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || '重新分类失败');
+      }
+      
+      const result = await response.json();
+      setReclassifySuccess(result.message);
+      
+      // 更新图片数据
+      await fetchClassifiedImages();
+      
+      // 如果是从模态框中分类的，延迟关闭模态框
+      if (showImageModal) {
+        setTimeout(() => {
+          closeImageModal();
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('重新分类图片失败:', err);
+      setReclassifyError(err instanceof Error ? err.message : '重新分类图片失败');
+    } finally {
+      setReclassifying(false);
+    }
+  };
+
+  // 从模态框重新分类图片
+  const reclassifyImage = async () => {
+    if (!selectedImage || !targetCategory) return;
+    
+    // 从URL中提取当前类别
+    const urlParts = selectedImage.url.split('/');
+    const sourceCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+    
+    // 如果目标类别与源类别相同，不执行操作
+    if (sourceCategory === targetCategory) {
+      setReclassifyError('目标类别与当前类别相同');
+      return;
+    }
+    
+    // 调用通用的重新分类函数
+    await reclassifyImageToCategory(selectedImage, sourceCategory, targetCategory);
   };
   
   // 统计信息 - 使用保存的类别计数
@@ -198,6 +342,8 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
         <button 
           onClick={() => setSelectedCategory(null)}
           className={`px-3 py-1 rounded ${selectedCategory === null ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+          onDragOver={(e) => handleDragOver(e, 'all')}
+          onDrop={(e) => e.preventDefault()}
         >
           全部
         </button>
@@ -206,6 +352,8 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
             key={cat.name}
             onClick={() => setSelectedCategory(cat.name)}
             className={`px-3 py-1 rounded ${selectedCategory === cat.name ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            onDragOver={(e) => handleDragOver(e, cat.name)}
+            onDrop={(e) => handleDrop(e, cat.name)}
           >
             {cat.name} ({cat.count})
           </button>
@@ -230,6 +378,10 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
                 key={img.filename} 
                 className="border rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => handleImageClick(img)}
+                onContextMenu={(e) => handleContextMenu(e, img)}
+                draggable
+                onDragStart={() => handleDragStart(img)}
+                onDragEnd={handleDragEnd}
               >
                 <div className="relative aspect-square bg-gray-100">
                   <img
@@ -253,6 +405,10 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
                 key={img.filename} 
                 className="flex items-center p-2 hover:bg-gray-50 cursor-pointer"
                 onClick={() => handleImageClick(img)}
+                onContextMenu={(e) => handleContextMenu(e, img)}
+                draggable
+                onDragStart={() => handleDragStart(img)}
+                onDragEnd={handleDragEnd}
               >
                 <div className="w-16 h-16 bg-gray-100 mr-3 flex-shrink-0">
                   <img
@@ -313,6 +469,58 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
         </div>
       )}
       
+      {/* 右键菜单 */}
+      {showContextMenu && contextMenuImage && (
+        <div 
+          ref={contextMenuRef}
+          className="fixed bg-white shadow-lg rounded-lg overflow-hidden z-50 border"
+          style={{
+            left: `${contextMenuPosition.x}px`,
+            top: `${contextMenuPosition.y}px`,
+            maxWidth: '200px'
+          }}
+        >
+          <div className="p-2 border-b bg-gray-50 text-sm font-medium truncate">
+            {contextMenuImage.filename}
+          </div>
+          <div className="py-1">
+            {allCategories.map(cat => {
+              // 从URL中提取当前类别
+              const urlParts = contextMenuImage.url.split('/');
+              const currentCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+              
+              // 如果是当前类别，不显示在选项中
+              if (cat === currentCategory) return null;
+              
+              return (
+                <button
+                  key={cat}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
+                  onClick={() => handleContextMenuReclassify(cat)}
+                  disabled={reclassifying}
+                >
+                  移动到 "{cat}"
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t py-1">
+            <button
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-blue-500"
+              onClick={() => handleImageClick(contextMenuImage)}
+            >
+              查看图片
+            </button>
+            <button
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-500"
+              onClick={() => setShowContextMenu(false)}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* 图片查看模态框 */}
       {showImageModal && selectedImage && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
@@ -338,6 +546,52 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
               <p><span className="font-medium">大小：</span> {formatFileSize(selectedImage.size)}</p>
               <p><span className="font-medium">创建时间：</span> {new Date(selectedImage.created).toLocaleString()}</p>
               <p><span className="font-medium">路径：</span> {selectedImage.path}</p>
+              
+              {/* 重新分类功能 */}
+              <div className="mt-4 pt-3 border-t">
+                <div className="flex items-center gap-2">
+                  <label className="font-medium">重新分类到：</label>
+                  <select 
+                    value={targetCategory}
+                    onChange={(e) => setTargetCategory(e.target.value)}
+                    className="border rounded px-2 py-1 flex-grow"
+                    disabled={reclassifying}
+                  >
+                    <option value="">选择目标类别...</option>
+                    {allCategories.map(cat => {
+                      // 从URL中提取当前类别
+                      const urlParts = selectedImage.url.split('/');
+                      const currentCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+                      
+                      // 如果是当前类别，不显示在选项中
+                      if (cat === currentCategory) return null;
+                      
+                      return (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <button
+                    onClick={reclassifyImage}
+                    disabled={!targetCategory || reclassifying}
+                    className={`px-3 py-1 rounded ${!targetCategory || reclassifying ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                  >
+                    {reclassifying ? '处理中...' : '确认'}
+                  </button>
+                </div>
+                
+                {/* 错误信息 */}
+                {reclassifyError && (
+                  <p className="text-red-500 mt-2">{reclassifyError}</p>
+                )}
+                
+                {/* 成功信息 */}
+                {reclassifySuccess && (
+                  <p className="text-green-500 mt-2">{reclassifySuccess}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
