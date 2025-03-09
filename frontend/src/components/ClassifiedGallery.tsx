@@ -40,6 +40,17 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [contextMenuImage, setContextMenuImage] = useState<ClassifiedImage | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  
+  // 框选相关状态
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
+  const [selectionEnd, setSelectionEnd] = useState({ x: 0, y: 0 });
+  const [selectedImages, setSelectedImages] = useState<ClassifiedImage[]>([]);
+  const [showBatchActionMenu, setShowBatchActionMenu] = useState(false);
+  const [batchActionMenuPosition, setBatchActionMenuPosition] = useState({ x: 0, y: 0 });
+  const batchActionMenuRef = useRef<HTMLDivElement>(null);
+  const galleryRef = useRef<HTMLDivElement>(null);
+  const imageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // 获取已分类的图片
   const fetchClassifiedImages = async () => {
@@ -143,11 +154,14 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
     setReclassifySuccess(null);
   };
   
-  // 点击页面任何地方关闭右键菜单
+  // 点击页面任何地方关闭右键菜单和批量操作菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
         setShowContextMenu(false);
+      }
+      if (batchActionMenuRef.current && !batchActionMenuRef.current.contains(event.target as Node)) {
+        setShowBatchActionMenu(false);
       }
     };
 
@@ -156,6 +170,228 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+  
+
+  
+  // 框选相关函数
+  const startSelection = (e: MouseEvent) => {
+    if (!galleryRef.current) return;
+    
+    // 记录鼠标在文档中的位置
+    setIsSelecting(true);
+    setSelectionStart({ x: e.clientX, y: e.clientY });
+    setSelectionEnd({ x: e.clientX, y: e.clientY });
+    setSelectedImages([]);
+  };
+  
+  const updateSelection = (e: MouseEvent) => {
+    if (!isSelecting || !galleryRef.current) return;
+    
+    // 更新鼠标当前位置
+    setSelectionEnd({ x: e.clientX, y: e.clientY });
+    
+    // 获取画廊元素的位置信息
+    const galleryRect = galleryRef.current.getBoundingClientRect();
+    
+    // 计算选择框在文档中的位置
+    const selectionRect = {
+      left: Math.min(selectionStart.x, selectionEnd.x),
+      top: Math.min(selectionStart.y, selectionEnd.y),
+      right: Math.max(selectionStart.x, selectionEnd.x),
+      bottom: Math.max(selectionStart.y, selectionEnd.y)
+    };
+    
+    const selected: ClassifiedImage[] = [];
+    const currentImages = getCurrentPageImages();
+    
+    currentImages.forEach((img) => {
+      const imgElement = imageRefs.current.get(img.filename);
+      if (imgElement) {
+        // 获取图片在文档中的位置
+        const imgRect = imgElement.getBoundingClientRect();
+        
+        // 检查图片是否与选择框相交
+        if (
+          imgRect.right >= selectionRect.left &&
+          imgRect.left <= selectionRect.right &&
+          imgRect.bottom >= selectionRect.top &&
+          imgRect.top <= selectionRect.bottom
+        ) {
+          selected.push(img);
+        }
+      }
+    });
+    
+    setSelectedImages(selected);
+  };
+  
+  const endSelection = (e: MouseEvent) => {
+    if (!isSelecting) return;
+    
+    setIsSelecting(false);
+    
+    // 如果选中了图片，显示批量操作菜单
+    if (selectedImages.length > 0) {
+      // 计算菜单应该显示的位置
+      // 防止菜单超出屏幕边缘
+      const menuX = Math.min(e.clientX, window.innerWidth - 250);
+      const menuY = Math.min(e.clientY, window.innerHeight - 300);
+      setBatchActionMenuPosition({ x: menuX, y: menuY });
+      setShowBatchActionMenu(true);
+      
+      // 防止默认行为
+      e.preventDefault();
+    }
+  };
+  
+  // 添加点击外部关闭批量操作菜单的事件监听器
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showBatchActionMenu && batchActionMenuRef.current && !batchActionMenuRef.current.contains(e.target as Node)) {
+        setShowBatchActionMenu(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBatchActionMenu]);
+  
+  // 在组件挂载时添加鼠标事件监听器
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      // 如果菜单已经打开，则不进行框选
+      if (showBatchActionMenu) return;
+      
+      // 如果不是左键点击或者按住了Ctrl/Command键，不进行框选
+      if (e.button !== 0 || e.ctrlKey || e.metaKey) return;
+      
+      // 开始框选
+      startSelection(e);
+    };
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      updateSelection(e);
+    };
+    
+    const handleMouseUp = (e: MouseEvent) => {
+      endSelection(e);
+    };
+    
+    // 添加事件监听器
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    // 清理函数
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isSelecting, selectionStart, selectedImages, showBatchActionMenu]);
+  
+
+  
+
+  
+  // 获取选择框的位置和尺寸
+  const getSelectionRect = () => {
+    const left = Math.min(selectionStart.x, selectionEnd.x);
+    const top = Math.min(selectionStart.y, selectionEnd.y);
+    const right = Math.max(selectionStart.x, selectionEnd.x);
+    const bottom = Math.max(selectionStart.y, selectionEnd.y);
+    
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
+  
+  // 获取选择框的可见部分（显示在画廊区域内）
+  const getVisibleSelectionRect = () => {
+    if (!galleryRef.current) return { left: 0, top: 0, width: 0, height: 0 };
+    
+    const galleryRect = galleryRef.current.getBoundingClientRect();
+    const selectionRect = getSelectionRect();
+    
+    // 显示完整的选择框，不限制在画廊区域内
+    return { 
+      left: selectionRect.left, 
+      top: selectionRect.top, 
+      width: selectionRect.width, 
+      height: selectionRect.height 
+    };
+  };
+  
+  // 批量重新分类图片
+  const batchReclassify = async (targetCategory: string) => {
+    if (selectedImages.length === 0) return;
+    
+    setReclassifying(true);
+    setReclassifyError(null);
+    setReclassifySuccess(null);
+    
+    try {
+      // 记录成功重分类的图片数量
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // 依次处理每张图片
+      for (const image of selectedImages) {
+        try {
+          // 从URL中提取当前类别
+          const urlParts = image.url.split('/');
+          const sourceCategory = urlParts[2]; // 格式为 /images/{category}/{filename}
+          
+          // 如果目标类别与源类别相同，跳过
+          if (sourceCategory === targetCategory) continue;
+          
+          // 调用API重新分类
+          const params = new URLSearchParams({
+            filename: image.filename,
+            source_category: sourceCategory,
+            target_category: targetCategory
+          });
+          
+          console.log(`尝试将图片 ${image.filename} 从 ${sourceCategory} 移动到 ${targetCategory}`);
+          
+          const response = await fetch(`${apiBaseUrl}/reclassify-image?${params}`, {
+            method: 'POST',
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error(`重分类图片 ${image.filename} 失败:`, errorData);
+            errorCount++;
+          } else {
+            successCount++;
+            console.log(`成功将图片 ${image.filename} 从 ${sourceCategory} 移动到 ${targetCategory}`);
+          }
+        } catch (error) {
+          console.error(`重分类图片 ${image.filename} 时发生错误:`, error);
+          errorCount++;
+        }
+      }
+      
+      // 更新图片数据
+      await fetchClassifiedImages();
+      
+      if (successCount > 0) {
+        setReclassifySuccess(`已成功将 ${successCount} 张图片重新分类到 ${targetCategory}${errorCount > 0 ? `，${errorCount} 张图片处理失败` : ''}`);
+      } else {
+        setReclassifyError(`没有图片被重新分类${errorCount > 0 ? `，${errorCount} 张图片处理失败` : ''}，请检查是否选择了正确的目标类别`);
+      }
+      
+      // 清除选中状态
+      setSelectedImages([]);
+      setShowBatchActionMenu(false);
+    } catch (err) {
+      console.error('批量重新分类图片失败:', err);
+      setReclassifyError(err instanceof Error ? err.message : '批量重新分类图片失败');
+    } finally {
+      setReclassifying(false);
+    }
+  };
 
   // 处理右键点击事件
   const handleContextMenu = (event: React.MouseEvent, image: ClassifiedImage) => {
@@ -367,7 +603,10 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
       {error && <p className="text-red-500">{error}</p>}
       
       {/* 图片展示区域 */}
-      <div className="flex-grow overflow-y-auto">
+      <div 
+        className="flex-grow overflow-y-auto relative select-none"
+        ref={galleryRef}
+      >
         {totalImages === 0 && !loading && !error ? (
           <p className="text-gray-500 text-center py-8">暂无已分类的图片</p>
         ) : viewMode === 'grid' ? (
@@ -376,12 +615,22 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
             {getCurrentPageImages().map(img => (
               <div 
                 key={img.filename} 
-                className="border rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => handleImageClick(img)}
+                className={`border rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${selectedImages.some(selected => selected.filename === img.filename) ? 'ring-2 ring-blue-500' : ''}`}
+                onClick={(e) => {
+                  // 如果正在框选，不触发点击事件
+                  if (!isSelecting) {
+                    handleImageClick(img);
+                  }
+                }}
                 onContextMenu={(e) => handleContextMenu(e, img)}
                 draggable
                 onDragStart={() => handleDragStart(img)}
                 onDragEnd={handleDragEnd}
+                ref={(el) => {
+                  if (el) {
+                    imageRefs.current.set(img.filename, el);
+                  }
+                }}
               >
                 <div className="relative aspect-square bg-gray-100">
                   <img
@@ -403,12 +652,22 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
             {getCurrentPageImages().map(img => (
               <div 
                 key={img.filename} 
-                className="flex items-center p-2 hover:bg-gray-50 cursor-pointer"
-                onClick={() => handleImageClick(img)}
+                className={`flex items-center p-2 hover:bg-gray-50 cursor-pointer ${selectedImages.some(selected => selected.filename === img.filename) ? 'bg-blue-50 ring-1 ring-blue-500' : ''}`}
+                onClick={(e) => {
+                  // 如果正在框选，不触发点击事件
+                  if (!isSelecting) {
+                    handleImageClick(img);
+                  }
+                }}
                 onContextMenu={(e) => handleContextMenu(e, img)}
                 draggable
                 onDragStart={() => handleDragStart(img)}
                 onDragEnd={handleDragEnd}
+                ref={(el) => {
+                  if (el) {
+                    imageRefs.current.set(img.filename, el);
+                  }
+                }}
               >
                 <div className="w-16 h-16 bg-gray-100 mr-3 flex-shrink-0">
                   <img
@@ -466,6 +725,77 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
               末页
             </button>
           </div>
+        </div>
+      )}
+      
+      {/* 框选区域 - 使用固定定位以相对于整个文档定位 */}
+      {isSelecting && (
+        <div 
+          className="fixed border-2 border-blue-500 bg-blue-100 bg-opacity-30 pointer-events-none z-50"
+          style={{
+            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+          }}
+        />
+      )}
+      
+      {/* 批量操作菜单 */}
+      {showBatchActionMenu && selectedImages.length > 0 && (
+        <div 
+          ref={batchActionMenuRef}
+          className="fixed bg-white shadow-lg rounded-lg overflow-hidden z-50 border"
+          style={{
+            left: `${batchActionMenuPosition.x}px`,
+            top: `${batchActionMenuPosition.y}px`,
+            maxWidth: '250px'
+          }}
+        >
+          <div className="p-2 border-b bg-gray-50 text-sm font-medium">
+            已选择 {selectedImages.length} 张图片
+          </div>
+          <div className="py-1">
+            <div className="px-4 py-2 text-sm font-medium">移动到类别：</div>
+            {allCategories.map(cat => {
+              // 检查选中的图片是否都属于同一类别
+              const allSameCategory = selectedImages.every(img => {
+                const urlParts = img.url.split('/');
+                const sourceCategory = urlParts[2];
+                return sourceCategory === cat;
+              });
+              
+              // 如果所有图片都属于该类别，则禁用该选项
+              return (
+                <button
+                  key={cat}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => batchReclassify(cat)}
+                  disabled={allSameCategory || reclassifying}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t py-1">
+            <button
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-500"
+              onClick={() => {
+                setSelectedImages([]);
+                setShowBatchActionMenu(false);
+              }}
+            >
+              取消选择
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* 重新分类结果提示 */}
+      {(reclassifySuccess || reclassifyError) && (
+        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50 ${reclassifyError ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+          {reclassifySuccess || reclassifyError}
         </div>
       )}
       
