@@ -13,154 +13,59 @@
 - 支持多种图片格式 (jpg, jpeg, png, gif, bmp)
 - 支持自定义API配置和模型参数
 
-项目UI界面：
-![UI界面](ui.png)
-
 ## 项目结构
 
-```
 VLMClassifier/
-├── images/
-│   ├── input/     # 存放待分类的图片
-│   └── output/    # 存放分类结果
-├── image_classifier.py  # 核心分类逻辑
-├── gui.py              # 图形用户界面
-├── requirements.txt    # 项目依赖
-├── .env                # 环境配置
-└── README.md           # 项目文档
-```
+├── backend/                # 后端 API 服务
+│   ├── main.py            # 主要 API 实现
+│   ├── classified/        # 存放分类后的图片
+│   ├── uploads/           # 存放上传的图片
+│   └── static/            # 静态文件
+│
+├── frontend/               # 前端 Next.js 应用
+│   ├── src/
+│   │   ├── app/           # Next.js 应用页面
+│   │   └── components/    # React 组件
+│   │       ├── ClassificationResults.tsx  # 分类结果展示组件
+│   │       ├── ClassifiedGallery.tsx      # 已分类图片库组件
+│   │       ├── Header.tsx                 # 页面头部组件
+│   │       ├── ImageUploader.tsx          # 图片上传组件
+│   │       └── SettingsModal.tsx          # 设置模态框组件
+│   └── vlmclassifier-next/ # Next.js 构建输出
+│
+├── electron-app/           # Electron 桌面应用相关文件
+│
+├── image_classifier.py     # 原始的图片分类核心逻辑
+├── gui.py                  # 原始的图形用户界面
+├── build.py                # 构建脚本
+│
+├── .env                    # 环境配置文件
+└── README.md               # 项目文档
 
-## 安装要求
+### 核心模块解析
+后端 API 服务提供以下主要功能：
 
-1. 安装Python 3.7+
-2. 安装所需依赖：
-```bash
-pip install -r requirements.txt
-```
+图片分类：
+- 单张图片分类 (/classify)
+- 批量图片分类 (/classify-multiple)
+图片管理：
+- 获取已分类图片列表 (/classified-images)
+- 获取图片内容 (/image/{category}/{filename})
+- 重新分类图片 (/reclassify)
+配置管理：
+- 获取配置 (/config)
+- 更新配置 (/update-config)
+- 获取分类类别 (/categories)
+后端使用 OpenAI 客户端调用视觉语言模型 API 进行图片分析和分类。
 
-## 配置
+前端 (Next.js)
+前端由以下主要组件构成：
 
-1. 复制配置文件模板：
-```bash
-cp .env.example .env
-```
-
-2. 编辑.env文件，配置以下参数：
-
-```ini
-# API Configuration
-API_BASE_URL=your_api_base_url
-API_KEY=your_api_key
-
-# Model Configuration
-MODEL_NAME=your_model_name
-
-# Directory Configuration
-INPUT_DIR=images/input
-OUTPUT_DIR=images/output
-
-# Optional: Custom prompt
-CLASSIFICATION_PROMPT=your_custom_prompt
-```
-
-配置说明：
-- API_BASE_URL: API的基础URL
-- API_KEY: API访问密钥
-- MODEL_NAME: 要使用的模型名称（默认：qwen-vl-plus）
-- INPUT_DIR: 待分类图片的目录路径
-- OUTPUT_DIR: 分类结果的输出目录路径
-- CLASSIFICATION_PROMPT: 自定义的分类提示词（可选）
-
-## 使用方法
-
-### 下载预构建版本（推荐）
-
-1. 访问[GitHub Releases页面](https://github.com/Lapis0x0/VLMClassifier/releases)下载最新版本
-
-2. 根据您的操作系统选择相应的安装包：
-
-   **macOS用户**:
-   - 下载`VLMClassifier-Installer.dmg`文件
-   - 双击打开DMG文件
-   - 在打开的窗口中，将`VLMClassifier.app`拖到“应用程序”文件夹的快捷方式中
-   - 弹出DMG卷
-   - 从启动台或应用程序文件夹中启动`VLMClassifier`
-   
-   **Windows用户**:
-   - 下载`VLMClassifier-vX.X.X-win64.exe`文件
-   - 双击运行可执行文件
-   - 按照安装向导完成安装
-
-3. 首次运行时，您需要在配置面板中输入您的API配置信息：
-   - API密钥（必填）
-   - API基础URL（默认为阿里云通义千问API地址）
-   - 模型名称（默认为qwen-vl-plus-latest）
-   - 分类提示词和有效类别（可使用默认值）
-
-### 命令行模式（开发者）
-
-1. 将需要分类的图片放入 `images/input` 目录
-
-2. 运行命令行程序：
-```bash
-python image_classifier.py
-```
-
-3. 程序会自动处理 `images/input` 目录中的所有图片，并将分类结果保存到 `images/output` 目录中的对应子文件夹。
-
-### 图形界面模式（从源码运行）
-
-1. 运行GUI程序：
-```bash
-python gui.py
-```
-
-2. 在图形界面中操作：
-   - 点击"选择图片"按钮或直接拖放图片/文件夹到界面中
-   - 可以通过图片右上角的"✕"按钮删除单个图片，或使用"清空全部"按钮删除所有图片
-   - 点击"开始分类"按钮开始处理
-   - 通过进度条查看处理进度
-   - 分类完成后，点击"打开分类结果"查看分类后的图片
-
-## 注意事项
-
-- 需要有有效的API访问密钥
-- 使用API时会产生相应的费用，请参考相关的计费规则
-- 处理大量图片时可能需要较长时间，请耐心等待
-- 在命令行模式下，确保 `images/input` 目录中只包含图片文件
-- 出于安全考虑，应用不会保存您的API密钥到任何可能被分享的文件中
-- 应用会安全地将您的API配置保存在本地，无需每次启动时重新输入
-- 打包版本的发布过程采用了特殊处理，确保开发者的API密钥不会被包含在发布版本中
-
-## 开发路线图
-
-### 1.0版本
-- [X] 核心分类功能
-- [X] 基本GUI界面
-- [X] 拖放支持
-- [X] 图片管理（增删）
-- [X] 分类进度显示
-
-### 1.1版本
-- [X] 在GUI中选择和配置模型
-- [X] 在GUI中自定义分类提示词
-- [X] 保存和加载分类配置
-
-### 2.0版本（当前）
-- [X] 打包为独立可执行程序（目前已完成macOS和Windows的打包）
-- [X] 使用GitHub Actions自动构建发布版本
-- [X] 增强安全性，确保API密钥不会在打包版本中泄露
-- [ ] 支持更多图片格式
-- [ ] 给项目设计一个图标
-
-### 未来可能计划
-- [ ] 多语言支持
-- [ ] 本地模型支持，无需联网
-- [ ] 自定义分类规则和过滤器
-- [ ] 图片编辑基本功能
-- [ ] 云同步和备份
-- [ ] 移动端支持
-- [ ] 批量重命名功能
+- ImageUploader：处理图片上传功能
+- ClassificationResults：显示分类结果
+- ClassifiedGallery：展示已分类的图片库
+- Header：应用头部导航
+SettingsModal：配置设置界面
 
 ## 贡献指南
 
