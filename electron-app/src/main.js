@@ -5,6 +5,10 @@ const { spawn } = require('child_process');
 const axios = require('axios');
 const isDev = require('electron-is-dev');
 const log = require('electron-log');
+const fs = require('fs-extra');
+const express = require('express');
+const multer = require('multer');
+const cors = require('cors');
 
 // 配置日志
 log.transports.file.level = 'info';
@@ -150,43 +154,129 @@ function createMenu() {
 }
 
 // 启动后端服务
-function startBackend() {
+async function startBackend() {
   log.info('启动后端服务...');
   
   // 检查后端是否已经在运行
-  axios.get(`${API_URL}/`)
-    .then(() => {
-      log.info('后端服务已经在运行');
-    })
-    .catch(() => {
-      log.info('后端服务未运行，正在启动...');
+  try {
+    const response = await axios.get(`${API_URL}/`, { timeout: 1000 });
+    log.info('后端服务已经在运行');
+    return;
+  } catch (error) {
+    log.info('后端服务未运行，正在启动...');
+  }
+  
+  // 确定Node.js后端路径
+  let backendPath;
+  
+  // 尝试多种可能的后端路径
+  const possiblePaths = [
+    // 开发环境路径
+    path.join(app.getAppPath(), '../../node-backend/index.js'),  // 相对于应用目录
+    path.join(__dirname, '../../node-backend/index.js'),        // 相对于当前文件
+    path.join(process.cwd(), '../node-backend/index.js'),       // 相对于当前工作目录
+    
+    // 生产环境路径（打包后的应用）
+    path.join(app.getAppPath(), '../node-backend/index.js'),
+    path.join(app.getAppPath(), 'node-backend/index.js'),
+    path.join(path.dirname(app.getAppPath()), 'node-backend/index.js'),
+    
+    // extraResources 路径 (electron-builder打包后)
+    path.join(process.resourcesPath, 'node-backend/index.js'),
+    path.join(process.resourcesPath, 'app.asar.unpacked/node-backend/index.js'),
+    
+    // 绝对路径
+    path.resolve(path.join(app.getAppPath(), '../../node-backend/index.js')),
+  ];
+  
+  // 打印当前应用路径信息，用于调试
+  log.info(`应用路径信息:`);
+  log.info(`- app.getAppPath(): ${app.getAppPath()}`);
+  log.info(`- __dirname: ${__dirname}`);
+  log.info(`- process.cwd(): ${process.cwd()}`);
+  log.info(`- process.resourcesPath: ${process.resourcesPath || '不可用'}`);
+  
+  // 如果是打包后的应用，尝试复制后端文件到临时目录
+  if (!isDev && process.resourcesPath) {
+    try {
+      const tempBackendDir = path.join(app.getPath('temp'), 'vlmclassifier-backend');
+      const resourceBackendPath = path.join(process.resourcesPath, 'node-backend');
       
-      // 确定后端脚本路径
-      const backendPath = path.join(app.getAppPath(), '../../backend/main.py');
-      log.info(`后端路径: ${backendPath}`);
+      log.info(`尝试从 ${resourceBackendPath} 复制后端文件到 ${tempBackendDir}`);
       
-      // 启动后端进程
-      backendProcess = spawn('python', [backendPath], {
-        detached: false,
-        stdio: 'pipe'
-      });
+      // 确保目录存在
+      if (!fs.existsSync(tempBackendDir)) {
+        fs.mkdirSync(tempBackendDir, { recursive: true });
+      }
       
-      backendProcess.stdout.on('data', (data) => {
-        log.info(`后端输出: ${data}`);
-      });
-      
-      backendProcess.stderr.on('data', (data) => {
-        log.error(`后端错误: ${data}`);
-      });
-      
-      backendProcess.on('close', (code) => {
-        log.info(`后端进程退出，代码: ${code}`);
-        backendProcess = null;
-      });
-      
-      // 等待后端启动
-      waitForBackend();
+      // 如果资源目录中存在后端文件，复制到临时目录
+      if (fs.existsSync(resourceBackendPath)) {
+        fs.copySync(resourceBackendPath, tempBackendDir);
+        log.info(`成功复制后端文件到临时目录`);
+        
+        // 添加临时目录路径
+        possiblePaths.unshift(path.join(tempBackendDir, 'index.js'));
+      }
+    } catch (err) {
+      log.error(`复制后端文件失败: ${err.message}`);
+    }
+  }
+  
+  // 检查文件是否存在
+  for (const p of possiblePaths) {
+    try {
+      log.info(`检查路径: ${p}`);
+      if (fs.existsSync(p)) {
+        backendPath = p;
+        log.info(`找到后端路径: ${backendPath}`);
+        break;
+      } else {
+        log.info(`路径不存在: ${p}`);
+      }
+    } catch (err) {
+      log.warn(`检查路径失败: ${p}, 错误: ${err.message}`);
+    }
+  }
+  
+  if (!backendPath) {
+    log.error('无法找到后端脚本路径');
+    dialog.showErrorBox('启动错误', '无法找到后端脚本。请确保项目结构正确。');
+    return;
+  }
+  
+  log.info(`使用后端路径: ${backendPath}`);
+  
+  try {
+    // 获取后端目录
+    const backendDir = path.dirname(backendPath);
+    
+    // 启动Node.js后端进程
+    log.info(`启动Node.js后端: ${backendPath}`);
+    backendProcess = spawn('node', [backendPath], {
+      cwd: backendDir,
+      stdio: 'pipe'
     });
+    
+    backendProcess.stdout.on('data', (data) => {
+      log.info(`后端输出: ${data}`);
+    });
+    
+    backendProcess.stderr.on('data', (data) => {
+      log.error(`后端错误: ${data}`);
+    });
+    
+    backendProcess.on('close', (code) => {
+      log.info(`后端进程退出，代码: ${code}`);
+      backendProcess = null;
+    });
+    
+    // 等待后端启动
+    waitForBackend();
+    
+  } catch (error) {
+    log.error(`启动Node.js后端失败: ${error.message}`);
+    dialog.showErrorBox('启动错误', `无法启动后端服务: ${error.message}`);
+  }
 }
 
 // 等待后端服务启动
@@ -195,7 +285,7 @@ function waitForBackend(attempts = 0, maxAttempts = 30) {
     log.error('后端服务启动超时');
     dialog.showErrorBox(
       '启动错误',
-      '无法启动后端服务，请检查Python环境和依赖是否正确安装。'
+      '无法启动后端服务，请检查Node.js环境和依赖是否正确安装。'
     );
     return;
   }

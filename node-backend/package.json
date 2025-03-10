@@ -1,0 +1,22 @@
+{
+  "name": "vlmclassifier-backend",
+  "version": "1.0.0",
+  "description": "VLM图像分类器后端服务",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.20.0",
+    "sharp": "^0.33.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

@@ -44,3 +44,5 @@ frontend/.next/cache/
 frontend/.next/cache/*
 frontend/.next/trace
 electron-app/node_modules/
+node-backend/node_modules/
+node-backend/classified/
