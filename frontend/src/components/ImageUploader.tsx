@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { isElectron, openFileDialog, openDirectoryDialog, onSelectedFiles, onSelectedDirectory } from '../utils/electron';
 
 interface ImageUploaderProps {
   onImagesAdded: (files: File[]) => void;
@@ -8,6 +9,7 @@ interface ImageUploaderProps {
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesAdded, disabled = false }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isElectronApp, setIsElectronApp] = useState(false);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     // 过滤出图片文件
@@ -27,6 +29,96 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesAdded, disabled =
     },
     disabled
   });
+
+  // 检查是否在Electron环境中运行
+  useEffect(() => {
+    setIsElectronApp(isElectron());
+  }, []);
+
+  // 监听从Electron主进程传来的文件选择事件
+  useEffect(() => {
+    if (isElectronApp) {
+      const removeFileListener = onSelectedFiles((filePaths) => {
+        handleElectronFiles(filePaths);
+      });
+
+      const removeDirectoryListener = onSelectedDirectory((dirPath) => {
+        handleElectronDirectory(dirPath);
+      });
+
+      return () => {
+        removeFileListener();
+        removeDirectoryListener();
+      };
+    }
+  }, [isElectronApp, onImagesAdded]);
+
+  // 处理从Electron选择的文件
+  const handleElectronFiles = async (filePaths: string[]) => {
+    if (disabled || filePaths.length === 0) return;
+    
+    try {
+      const files = await Promise.all(
+        filePaths.map(async (path) => {
+          // 从文件路径创建File对象
+          const response = await fetch(`file://${path}`);
+          const blob = await response.blob();
+          const filename = path.split(/[\\/]/).pop() || 'image.jpg';
+          return new File([blob], filename, { type: blob.type || 'image/jpeg' });
+        })
+      );
+      
+      const imageFiles = files.filter(file => file.type.startsWith('image/'));
+      if (imageFiles.length > 0) {
+        onImagesAdded(imageFiles);
+      }
+    } catch (error) {
+      console.error('处理Electron文件时出错:', error);
+    }
+  };
+
+  // 处理从Electron选择的目录
+  const handleElectronDirectory = async (dirPath: string) => {
+    if (disabled || !dirPath) return;
+    
+    try {
+      // 这里需要通过API获取目录中的所有图片文件
+      // 由于浏览器环境限制，我们需要通过后端API来处理
+      const response = await fetch(`http://localhost:8001/scan-directory?path=${encodeURIComponent(dirPath)}`);
+      const data = await response.json();
+      
+      if (data.files && data.files.length > 0) {
+        handleElectronFiles(data.files);
+      }
+    } catch (error) {
+      console.error('处理Electron目录时出错:', error);
+    }
+  };
+
+  // 打开文件选择对话框
+  const handleSelectFiles = async () => {
+    if (disabled) return;
+    
+    if (isElectronApp) {
+      const filePaths = await openFileDialog();
+      if (filePaths.length > 0) {
+        handleElectronFiles(filePaths);
+      }
+    } else {
+      // 在Web环境中，模拟点击文件输入框
+      document.getElementById('fileInput')?.click();
+    }
+  };
+
+  // 打开目录选择对话框
+  const handleSelectDirectory = async () => {
+    if (disabled || !isElectronApp) return;
+    
+    const dirPath = await openDirectoryDialog();
+    if (dirPath) {
+      handleElectronDirectory(dirPath);
+    }
+  };
 
   return (
     <div 
@@ -61,6 +153,32 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImagesAdded, disabled =
             <>
               <p className="font-medium">拖放图片到此处，或点击选择图片</p>
               <p className="text-sm text-gray-500 mt-1">支持JPG、PNG和GIF图片</p>
+              {isElectronApp && (
+                <div className="mt-4 flex space-x-2">
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectFiles();
+                    }}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                    disabled={disabled}
+                  >
+                    选择图片
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectDirectory();
+                    }}
+                    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                    disabled={disabled}
+                  >
+                    选择文件夹
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

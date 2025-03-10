@@ -3,6 +3,7 @@ import base64
 import json
 import shutil
 import uuid
+import glob
 from typing import List, Dict, Optional
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
@@ -516,6 +517,36 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def startup_event():
     init_openai_client()
     
+
+@app.get("/scan-directory")
+async def scan_directory(path: str):
+    """
+    扫描指定目录，返回所有图片文件的路径
+    """
+    try:
+        # 检查路径是否存在
+        if not os.path.exists(path) or not os.path.isdir(path):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {path}")
+        
+        # 支持的图片扩展名
+        image_extensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]
+        
+        # 查找所有图片文件
+        image_files = []
+        for ext in image_extensions:
+            # 递归查找所有匹配的文件
+            pattern = os.path.join(path, f"**/*{ext}").replace("\\", "/")
+            image_files.extend(glob.glob(pattern, recursive=True))
+            
+            # 不区分大小写的扩展名也查找一遍
+            pattern_upper = os.path.join(path, f"**/*{ext.upper()}").replace("\\", "/")
+            image_files.extend(glob.glob(pattern_upper, recursive=True))
+        
+        # 返回结果
+        return {"files": image_files, "count": len(image_files)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"扫描目录时出错: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
