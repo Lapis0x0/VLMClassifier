@@ -445,6 +445,48 @@ app.post('/reclassify', (req, res) => {
   }
 });
 
+// 将图片从一个类别移动到另一个类别（与前端兼容的接口）
+app.post('/reclassify-image', (req, res) => {
+  try {
+    // 从查询参数中获取数据
+    const { filename, source_category, target_category } = req.query;
+    
+    if (!filename || !source_category || !target_category) {
+      return res.status(400).json({ error: "缺少必要参数" });
+    }
+    
+    const sourcePath = path.join(OUTPUT_DIR, source_category, filename);
+    
+    // 检查源文件是否存在
+    if (!fs.existsSync(sourcePath)) {
+      return res.status(404).json({ error: "源文件不存在" });
+    }
+    
+    // 确保目标目录存在
+    const targetDir = path.join(OUTPUT_DIR, target_category);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    const targetPath = path.join(targetDir, filename);
+    
+    // 移动文件
+    fs.copyFileSync(sourcePath, targetPath);
+    fs.unlinkSync(sourcePath);
+    
+    res.json({
+      message: `图片已成功从 ${source_category} 移动到 ${target_category}`,
+      filename,
+      source_category,
+      target_category,
+      newPath: `/image/${target_category}/${filename}`
+    });
+  } catch (error) {
+    console.error(`重新分类失败: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 获取当前配置
 app.get('/config', (req, res) => {
   // 返回配置，但隐藏API密钥

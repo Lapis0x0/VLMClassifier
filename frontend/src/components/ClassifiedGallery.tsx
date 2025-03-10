@@ -259,25 +259,40 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
     };
   }, [showBatchActionMenu]);
   
+  // 添加一个状态来跟踪是否正在拖拽图片
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+
   // 在组件挂载时添加鼠标事件监听器
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
-      // 如果菜单已经打开，则不进行框选
-      if (showBatchActionMenu) return;
+      // 如果菜单已经打开或正在拖拽图片，则不进行框选
+      if (showBatchActionMenu || isDraggingImage) return;
       
       // 如果不是左键点击或者按住了Ctrl/Command键，不进行框选
       if (e.button !== 0 || e.ctrlKey || e.metaKey) return;
+      
+      // 检查点击是否发生在图片元素上
+      const target = e.target as HTMLElement;
+      const isOnImage = target.tagName === 'IMG' || 
+                      target.closest('.image-item') !== null;
+      
+      // 如果点击在图片上，不进行框选
+      if (isOnImage) return;
       
       // 开始框选
       startSelection(e);
     };
     
     const handleMouseMove = (e: MouseEvent) => {
-      updateSelection(e);
+      if (!isDraggingImage) {
+        updateSelection(e);
+      }
     };
     
     const handleMouseUp = (e: MouseEvent) => {
-      endSelection(e);
+      if (!isDraggingImage) {
+        endSelection(e);
+      }
     };
     
     // 添加事件监听器
@@ -291,7 +306,7 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isSelecting, selectionStart, selectedImages, showBatchActionMenu]);
+  }, [isSelecting, selectionStart, selectedImages, showBatchActionMenu, isDraggingImage]);
   
 
   
@@ -407,11 +422,16 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
   // 处理拖拽开始
   const handleDragStart = (image: ClassifiedImage) => {
     setDraggedImage(image);
+    setIsDraggingImage(true);
   };
 
   // 处理拖拽结束
   const handleDragEnd = () => {
     setDraggedImage(null);
+    // 添加小延迟，确保拖拽结束后不会立即触发框选
+    setTimeout(() => {
+      setIsDraggingImage(false);
+    }, 100);
   };
 
   // 处理拖放目标的拖拽悬停
@@ -615,7 +635,7 @@ export default function ClassifiedGallery({ apiBaseUrl }: ClassifiedGalleryProps
             {getCurrentPageImages().map(img => (
               <div 
                 key={img.filename} 
-                className={`border rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow ${selectedImages.some(selected => selected.filename === img.filename) ? 'ring-2 ring-blue-500' : ''}`}
+                className={`border rounded overflow-hidden cursor-pointer hover:shadow-md transition-shadow image-item ${selectedImages.some(selected => selected.filename === img.filename) ? 'ring-2 ring-blue-500' : ''}`}
                 onClick={(e) => {
                   // 如果正在框选，不触发点击事件
                   if (!isSelecting) {
