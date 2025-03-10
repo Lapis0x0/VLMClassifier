@@ -48,10 +48,22 @@
         "from": "../node-backend",
         "to": "node-backend",
         "filter": ["**/*"]
+      },
+      {
+        "from": "../frontend/out",
+        "to": "frontend/out",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../frontend/out",
+        "to": "out",
+        "filter": ["**/*"]
       }
     ],
     "asarUnpack": [
-      "node-backend/**/*"
+      "node-backend/**/*",
+      "frontend/out/**/*",
+      "out/**/*"
     ],
     "mac": {
       "category": "public.app-category.utilities",

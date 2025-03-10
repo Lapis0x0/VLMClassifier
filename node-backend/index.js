@@ -56,8 +56,8 @@ function initOpenAIClient() {
       return false;
     }
   } else {
-    console.warn("API密钥或基础URL未设置，无法初始化OpenAI客户端");
-    return false;
+    console.log("未设置API密钥或基础URL，分类功能将在配置后可用");
+    return true; // 返回true表示服务可以继续启动
   }
 }
 
@@ -135,9 +135,15 @@ function getClosestCategory(responseText) {
 
 // 使用VLM对图片进行分类
 async function classifyImageWithVLM(imagePath) {
+  // 检查是否设置了API密钥和基础URL
+  if (!config.apiKey || !config.apiBaseUrl) {
+    throw new Error("未设置API密钥或基础URL，请先在设置中配置");
+  }
+  
+  // 如果客户端未初始化，尝试初始化
   if (!client) {
     if (!initOpenAIClient()) {
-      throw new Error("无法初始化OpenAI客户端");
+      throw new Error("无法初始化OpenAI客户端，请检查API密钥和基础URL是否有效");
     }
   }
   
@@ -495,6 +501,41 @@ app.get('/config', (req, res) => {
     safeConfig.apiKey = '******' + safeConfig.apiKey.slice(-4);
   }
   res.json(safeConfig);
+});
+
+// 更新配置
+app.post('/config', (req, res) => {
+  try {
+    const newConfig = req.body;
+    
+    // 更新配置
+    if (newConfig.apiKey) config.apiKey = newConfig.apiKey;
+    if (newConfig.apiBaseUrl) config.apiBaseUrl = newConfig.apiBaseUrl;
+    if (newConfig.modelName) config.modelName = newConfig.modelName;
+    
+    // 重新初始化OpenAI客户端
+    initOpenAIClient();
+    
+    console.log('配置已更新');
+    
+    // 返回更新后的配置（隐藏API密钥）
+    const safeConfig = { ...config };
+    if (safeConfig.apiKey) {
+      safeConfig.apiKey = '******' + safeConfig.apiKey.slice(-4);
+    }
+    
+    res.json({
+      success: true,
+      message: '配置已更新',
+      config: safeConfig
+    });
+  } catch (error) {
+    console.error(`更新配置失败: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: `更新配置失败: ${error.message}`
+    });
+  }
 });
 
 // 扫描目录，返回所有图片文件的路径

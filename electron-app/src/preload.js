@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld('electron', {
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   openDirectoryDialog: () => ipcRenderer.invoke('open-directory-dialog'),
   
+  // 配置相关
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  updateConfig: (config) => ipcRenderer.invoke('update-config', config),
+  openConfigDialog: () => ipcRenderer.invoke('open-config-dialog'),
+  
   // 接收来自主进程的消息
   onSelectedFiles: (callback) => {
     ipcRenderer.on('selected-files', (event, files) => callback(files));
@@ -18,5 +23,9 @@ contextBridge.exposeInMainWorld('electron', {
   onBackendReady: (callback) => {
     ipcRenderer.on('backend-ready', () => callback());
     return () => ipcRenderer.removeAllListeners('backend-ready');
+  },
+  onConfigUpdated: (callback) => {
+    ipcRenderer.on('config-updated', (event, result) => callback(result));
+    return () => ipcRenderer.removeAllListeners('config-updated');
   }
 });

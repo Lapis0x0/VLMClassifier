@@ -28,15 +28,18 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // 分离后端服务器URL和OpenAI API基础URL
+  const [backendUrl, setBackendUrl] = useState('http://localhost:8001');
   const [apiSettings, setApiSettings] = useState({
-    apiBaseUrl: 'http://localhost:8001',
+    apiBaseUrl: 'https://api.openai.com/v1',
     apiKey: '',
-    modelName: 'qwen-vl-plus-latest',
+    modelName: 'gpt-4-vision-preview',
     prompt: '请分析这张图片属于哪个类别：二次元、生活照片、宠物、工作、表情包。只需回答类别名称，不要解释。',
   });
 
-  // 从本地存储加载设置
+  // 从本地存储和后端加载设置
   useEffect(() => {
+    // 先从本地存储加载
     const savedSettings = localStorage.getItem('apiSettings');
     if (savedSettings) {
       try {
@@ -46,6 +49,43 @@ export default function Home() {
         console.error('解析保存的设置时出错:', e);
       }
     }
+    
+    // 加载后端 URL
+    const savedBackendUrl = localStorage.getItem('backendUrl');
+    if (savedBackendUrl) {
+      setBackendUrl(savedBackendUrl);
+    }
+    
+    // 然后从后端获取配置
+    const fetchConfig = async () => {
+      try {
+        // 使用后端服务器URL来获取配置
+        const response = await fetch(`${backendUrl}/config`);
+        
+        if (response.ok) {
+          const config = await response.json();
+          
+          // 合并配置，但保留本地存储中的值如果它们存在
+          const mergedSettings = {
+            ...apiSettings,
+            // 如果后端有值且本地没有设置，则使用后端的值
+            apiKey: apiSettings.apiKey || config.apiKey || '',
+            apiBaseUrl: apiSettings.apiBaseUrl,  // 保留前端的基础URL
+            modelName: apiSettings.modelName || config.modelName || 'qwen-vl-plus-latest',
+          };
+          
+          setApiSettings(mergedSettings);
+          
+          // 更新本地存储
+          localStorage.setItem('apiSettings', JSON.stringify(mergedSettings));
+        }
+      } catch (error) {
+        console.warn('从后端获取配置失败:', error);
+        // 失败时不阻止应用继续运行
+      }
+    };
+    
+    fetchConfig();
   }, []);
 
   // 处理图片添加
@@ -88,11 +128,11 @@ export default function Home() {
           const formData = new FormData();
           formData.append('file', image.file);
           
-          console.log('发送分类请求到:', apiSettings.apiBaseUrl);
+          console.log('发送分类请求到:', backendUrl);
           console.log('使用API密钥:', apiSettings.apiKey ? '已设置' : '未设置');
           
           try {
-            const response = await fetch(`${apiSettings.apiBaseUrl}/classify`, {
+            const response = await fetch(`${backendUrl}/classify`, {
               method: 'POST',
               body: formData,
               headers: {
@@ -113,14 +153,23 @@ export default function Home() {
               
               // 尝试解析错误详情
               let errorDetail = errorText;
+              let errorJson;
+              
               try {
-                const errorJson = JSON.parse(errorText);
-                errorDetail = errorJson.detail || errorText;
+                errorJson = JSON.parse(errorText);
+                errorDetail = errorJson.error || errorJson.detail || errorText;
               } catch (e) {
                 // 如果不是JSON格式，使用原始文本
               }
               
-              alert(`分类请求失败 (${response.status}): ${errorDetail}`);
+              // 处理特定类型的错误
+              if (errorDetail.includes('未设置API密钥') || errorDetail.includes('未设置基础URL')) {
+                alert('请先设置API密钥和基础URL。点击右上角的设置图标进行配置。');
+                setShowSettings(true); // 自动打开设置模态窗口
+              } else {
+                alert(`分类请求失败 (${response.status}): ${errorDetail}`);
+              }
+              
               break; // 出错时停止处理其他图片
             }
           } catch (fetchError) {
@@ -148,12 +197,38 @@ export default function Home() {
   };
 
   // 保存设置
-  const handleSaveSettings = (settings: typeof apiSettings) => {
+  const handleSaveSettings = async (settings: typeof apiSettings, newBackendUrl: string) => {
     setApiSettings(settings);
+    setBackendUrl(newBackendUrl);
     setShowSettings(false);
     
     // 保存设置到本地存储
     localStorage.setItem('apiSettings', JSON.stringify(settings));
+    localStorage.setItem('backendUrl', newBackendUrl);
+    
+    // 通过API更新后端的配置
+    try {
+      const response = await fetch(`${backendUrl}/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiKey: settings.apiKey,
+          apiBaseUrl: settings.apiBaseUrl,
+          modelName: settings.modelName
+        })
+      });
+      
+      if (response.ok) {
+        console.log('后端配置更新成功');
+      } else {
+        console.warn('更新后端配置失败:', await response.text());
+      }
+    } catch (error) {
+      console.error('更新后端配置时出错:', error);
+      // 不阻止用户继续使用应用
+    }
   };
 
   // 组件卸载时清理资源
@@ -216,7 +291,7 @@ export default function Home() {
           
           {/* 右侧区域 - 已分类图片库 */}
           <div className="md:w-1/3">
-            <ClassifiedGallery apiBaseUrl={apiSettings.apiBaseUrl} />
+            <ClassifiedGallery apiBaseUrl={backendUrl} />
           </div>
         </div>
       </main>
@@ -225,6 +300,7 @@ export default function Home() {
       {showSettings && (
         <SettingsModal
           settings={apiSettings}
+          backendUrl={backendUrl}
           onSave={handleSaveSettings}
           onCancel={() => setShowSettings(false)}
         />

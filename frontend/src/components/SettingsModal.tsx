@@ -7,26 +7,32 @@ interface SettingsProps {
     modelName: string;
     prompt: string;
   };
-  onSave: (settings: SettingsProps['settings']) => void;
+  backendUrl: string;
+  onSave: (settings: SettingsProps['settings'], backendUrl: string) => void;
   onCancel: () => void;
 }
 
-const SettingsModal: React.FC<SettingsProps> = ({ settings, onSave, onCancel }) => {
+const SettingsModal: React.FC<SettingsProps> = ({ settings, backendUrl, onSave, onCancel }) => {
   const [formData, setFormData] = useState({ ...settings });
+  const [backendUrlValue, setBackendUrlValue] = useState(backendUrl);
 
   // 处理表单值变化
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === 'backendUrl') {
+      setBackendUrlValue(value);
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   // 处理表单提交
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave(formData, backendUrlValue);
   };
 
   // 阻止点击模态框内容时冒泡到背景
@@ -67,8 +73,25 @@ const SettingsModal: React.FC<SettingsProps> = ({ settings, onSave, onCancel }) 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
             <div>
+              <label htmlFor="backendUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                后端服务器URL
+              </label>
+              <input
+                type="text"
+                id="backendUrl"
+                name="backendUrl"
+                value={backendUrlValue}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="http://localhost:8001"
+                required
+              />
+              <p className="mt-1 text-sm text-gray-500">本地后端服务器的URL，用于处理图片分类请求</p>
+            </div>
+            
+            <div>
               <label htmlFor="apiBaseUrl" className="block text-sm font-medium text-gray-700 mb-1">
-                API基础URL
+                OpenAI API基础URL
               </label>
               <input
                 type="text"
@@ -77,7 +100,7 @@ const SettingsModal: React.FC<SettingsProps> = ({ settings, onSave, onCancel }) 
                 value={formData.apiBaseUrl}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="https://api.example.com/v1"
+                placeholder="https://api.openai.com/v1"
                 required
               />
               <p className="mt-1 text-sm text-gray-500">视觉语言模型API的基础URL</p>
@@ -104,20 +127,30 @@ const SettingsModal: React.FC<SettingsProps> = ({ settings, onSave, onCancel }) 
               <label htmlFor="modelName" className="block text-sm font-medium text-gray-700 mb-1">
                 模型名称
               </label>
-              <select
-                id="modelName"
-                name="modelName"
-                value={formData.modelName}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="qwen-vl-plus-latest">通义千问VL</option>
-                <option value="gpt-4-vision-preview">GPT-4 Vision</option>
-                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-                <option value="gemini-pro-vision">Gemini Pro Vision</option>
-              </select>
-              <p className="mt-1 text-sm text-gray-500">要使用的视觉语言模型</p>
+              <div className="relative">
+                <input
+                  type="text"
+                  id="modelName"
+                  name="modelName"
+                  value={formData.modelName}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="输入模型名称"
+                  list="modelOptions"
+                  required
+                />
+                <datalist id="modelOptions">
+                  <option value="qwen-vl-plus-latest">通义千问VL</option>
+                  <option value="gpt-4-vision-preview">GPT-4 Vision</option>
+                  <option value="gpt-4o-2024-05-13">GPT-4o</option>
+                  <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                  <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
+                  <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                  <option value="gemini-pro-vision">Gemini Pro Vision</option>
+                  <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+                </datalist>
+              </div>
+              <p className="mt-1 text-sm text-gray-500">要使用的视觉语言模型，可以选择预设选项或输入自定义模型名称</p>
             </div>
             
             <div>

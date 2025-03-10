@@ -19,6 +19,41 @@ let mainWindow;
 let backendProcess = null;
 const API_URL = 'http://localhost:8001';
 
+// 配置文件路径
+const CONFIG_FILE_PATH = path.join(app.getPath('userData'), 'config.json');
+
+// 默认配置
+const DEFAULT_CONFIG = {
+  apiKey: '',
+  apiBaseUrl: 'https://api.openai.com/v1',
+  modelName: 'gpt-4-vision-preview'
+};
+
+// 读取配置文件
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const configData = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
+      return JSON.parse(configData);
+    }
+  } catch (error) {
+    log.error(`读取配置文件失败: ${error.message}`);
+  }
+  return DEFAULT_CONFIG;
+}
+
+// 保存配置文件
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 2));
+    log.info('配置文件已保存');
+    return true;
+  } catch (error) {
+    log.error(`保存配置文件失败: ${error.message}`);
+    return false;
+  }
+}
+
 function createWindow() {
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
@@ -39,13 +74,89 @@ function createWindow() {
   mainWindow.setTitle('VLM图像分类器');
 
   // 加载应用
-  const startUrl = isDev 
-    ? 'http://localhost:3000' // 开发模式：使用Next.js开发服务器
-    : url.format({
-        pathname: path.join(__dirname, '../../frontend/out/index.html'), // 生产模式：使用Next.js静态导出
+  let startUrl;
+  
+  if (isDev) {
+    // 开发模式：使用Next.js开发服务器
+    startUrl = 'http://localhost:3000';
+    log.info(`加载URL: ${startUrl}`);
+  } else {
+    // 生产模式：尝试多个可能的路径
+    const possiblePaths = [
+      path.join(__dirname, '../../frontend/out/index.html'),
+      path.join(__dirname, '../frontend/out/index.html'),
+      path.join(__dirname, 'frontend/out/index.html'),
+      path.join(app.getAppPath(), 'frontend/out/index.html'),
+      path.join(process.resourcesPath, 'frontend/out/index.html'),
+      path.join(process.resourcesPath, 'app.asar.unpacked/frontend/out/index.html'),
+      path.join(process.resourcesPath, 'frontend/out/index.html'),
+      path.join(process.resourcesPath, 'out/index.html'),
+      path.join(app.getPath('userData'), 'frontend/out/index.html'),
+      path.join(app.getPath('exe'), '../Resources/frontend/out/index.html')
+    ];
+    
+    // 打印所有路径信息，帮助调试
+    log.info('应用路径信息:');
+    log.info(`- app.getAppPath(): ${app.getAppPath()}`);
+    log.info(`- __dirname: ${__dirname}`);
+    log.info(`- process.cwd(): ${process.cwd()}`);
+    log.info(`- process.resourcesPath: ${process.resourcesPath}`);
+    log.info(`- app.getPath('userData'): ${app.getPath('userData')}`);
+    log.info(`- app.getPath('exe'): ${app.getPath('exe')}`);
+    
+    // 查找第一个存在的路径
+    let foundPath = null;
+    for (const p of possiblePaths) {
+      log.info(`检查前端路径: ${p}`);
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        log.info(`找到前端路径: ${foundPath}`);
+        break;
+      }
+    }
+    
+    if (foundPath) {
+      startUrl = url.format({
+        pathname: foundPath,
         protocol: 'file:',
         slashes: true
       });
+    } else {
+      // 如果找不到前端文件，尝试使用内置的错误页面
+      log.error('无法找到前端文件');
+      startUrl = url.format({
+        pathname: path.join(__dirname, 'error.html'),
+        protocol: 'file:',
+        slashes: true
+      });
+      
+      // 创建一个简单的错误页面
+      const errorHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>VLM图像分类器 - 错误</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+          h1 { color: #e74c3c; }
+          pre { background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: left; overflow: auto; }
+        </style>
+      </head>
+      <body>
+        <h1>加载错误</h1>
+        <p>无法找到前端文件。请确保应用已正确打包。</p>
+        <p>应用路径: ${app.getAppPath()}</p>
+        <p>资源路径: ${process.resourcesPath || '不可用'}</p>
+      </body>
+      </html>
+      `;
+      
+      // 写入错误页面
+      const errorPath = path.join(__dirname, 'error.html');
+      fs.writeFileSync(errorPath, errorHtml, 'utf8');
+    }
+  }
   
   log.info(`加载URL: ${startUrl}`);
   mainWindow.loadURL(startUrl);
@@ -99,6 +210,80 @@ function createMenu() {
                 mainWindow.webContents.send('selected-directory', result.filePaths[0]);
               }
             });
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'API配置',
+          click: async () => {
+            // 创建配置对话框
+            const configWindow = new BrowserWindow({
+              parent: mainWindow,
+              modal: true,
+              width: 500,
+              height: 400,
+              webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                preload: path.join(__dirname, 'preload.js')
+              }
+            });
+            
+            // 读取当前配置
+            const config = readConfig();
+            
+            // 加载配置页面
+            await configWindow.loadURL(`data:text/html;charset=utf-8,
+              <html>
+                <head>
+                  <title>配置</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h2 { color: #333; }
+                    label { display: block; margin-top: 15px; font-weight: bold; }
+                    input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; }
+                    button { margin-top: 20px; padding: 10px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                    button:hover { background-color: #45a049; }
+                    .note { font-size: 12px; color: #666; margin-top: 5px; }
+                  </style>
+                </head>
+                <body>
+                  <h2>OpenAI API配置</h2>
+                  <form id="configForm">
+                    <label for="apiKey">API密钥:</label>
+                    <input type="password" id="apiKey" value="${config.apiKey || ''}" placeholder="输入您的OpenAI API密钥" />
+                    <div class="note">注意：如果您没有API密钥，可以从 OpenAI 网站获取</div>
+                    
+                    <label for="apiBaseUrl">API基础URL:</label>
+                    <input type="text" id="apiBaseUrl" value="${config.apiBaseUrl || 'https://api.openai.com/v1'}" placeholder="默认为 https://api.openai.com/v1" />
+                    
+                    <label for="modelName">模型名称:</label>
+                    <input type="text" id="modelName" value="${config.modelName || 'gpt-4-vision-preview'}" placeholder="默认为 gpt-4-vision-preview" />
+                    
+                    <button type="submit">保存配置</button>
+                  </form>
+                  
+                  <script>
+                    document.getElementById('configForm').addEventListener('submit', (e) => {
+                      e.preventDefault();
+                      const config = {
+                        apiKey: document.getElementById('apiKey').value,
+                        apiBaseUrl: document.getElementById('apiBaseUrl').value,
+                        modelName: document.getElementById('modelName').value
+                      };
+                      window.electron.updateConfig(config);
+                    });
+                    
+                    window.electron.onConfigUpdated((result) => {
+                      alert(result.message);
+                      if (result.success) {
+                        window.close();
+                      }
+                    });
+                  </script>
+                </body>
+              </html>
+            `);
           }
         },
         { type: 'separator' },
@@ -252,9 +437,34 @@ async function startBackend() {
     
     // 启动Node.js后端进程
     log.info(`启动Node.js后端: ${backendPath}`);
-    backendProcess = spawn('node', [backendPath], {
+    
+    // 在打包环境中使用Electron内置的Node.js运行时
+    const nodePath = isDev ? 'node' : process.execPath;
+    // 移除--no-sandbox参数，它在macOS上不被支持
+    const nodeArgs = [backendPath];
+    
+    log.info(`使用Node路径: ${nodePath}`);
+    log.info(`参数: ${nodeArgs.join(' ')}`);
+    
+    // 读取配置文件
+    const config = readConfig();
+    log.info(`使用配置: ${JSON.stringify({...config, apiKey: config.apiKey ? '******' : ''})}`); // 隐藏API密钥
+    
+    // 设置后端需要的环境变量
+    const backendEnv = { 
+      ...process.env, 
+      ELECTRON_RUN_AS_NODE: '1',
+      // 使用配置文件中的API配置
+      API_KEY: config.apiKey || process.env.API_KEY || '',
+      API_BASE_URL: config.apiBaseUrl || process.env.API_BASE_URL || 'https://api.openai.com/v1',
+      MODEL_NAME: config.modelName || process.env.MODEL_NAME || 'gpt-4-vision-preview',
+      // 可以添加其他必要的环境变量
+    };
+    
+    backendProcess = spawn(nodePath, nodeArgs, {
       cwd: backendDir,
-      stdio: 'pipe'
+      stdio: 'pipe',
+      env: backendEnv
     });
     
     backendProcess.stdout.on('data', (data) => {
@@ -368,4 +578,123 @@ ipcMain.handle('open-directory-dialog', async () => {
     return result.filePaths[0];
   }
   return null;
+});
+
+// 配置相关的IPC处理
+
+// 获取配置
+ipcMain.handle('get-config', async () => {
+  const config = readConfig();
+  // 返回配置，但隐藏API密钥的大部分内容
+  return {
+    ...config,
+    apiKey: config.apiKey ? '******' + config.apiKey.slice(-4) : ''
+  };
+});
+
+// 更新配置
+ipcMain.handle('update-config', async (event, newConfig) => {
+  try {
+    // 读取当前配置
+    const currentConfig = readConfig();
+    
+    // 合并新配置
+    const updatedConfig = { ...currentConfig, ...newConfig };
+    
+    // 保存配置
+    const success = saveConfig(updatedConfig);
+    
+    // 如果后端已经启动，尝试通过API更新配置
+    try {
+      await axios.post(`${API_URL}/config`, updatedConfig);
+      log.info('通过API更新了后端配置');
+    } catch (error) {
+      log.warn(`通过API更新后端配置失败: ${error.message}`);
+    }
+    
+    // 通知前端配置已更新
+    mainWindow.webContents.send('config-updated', { 
+      success, 
+      message: success ? '配置已更新' : '更新配置失败' 
+    });
+    
+    return { success, message: success ? '配置已更新' : '更新配置失败' };
+  } catch (error) {
+    log.error(`更新配置失败: ${error.message}`);
+    return { success: false, message: `更新配置失败: ${error.message}` };
+  }
+});
+
+// 打开配置对话框
+ipcMain.handle('open-config-dialog', async () => {
+  // 创建配置对话框
+  const configWindow = new BrowserWindow({
+    parent: mainWindow,
+    modal: true,
+    width: 500,
+    height: 400,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+  
+  // 读取当前配置
+  const config = readConfig();
+  
+  // 加载配置页面
+  await configWindow.loadURL(`data:text/html;charset=utf-8,
+    <html>
+      <head>
+        <title>配置</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h2 { color: #333; }
+          label { display: block; margin-top: 15px; font-weight: bold; }
+          input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; }
+          button { margin-top: 20px; padding: 10px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          button:hover { background-color: #45a049; }
+          .note { font-size: 12px; color: #666; margin-top: 5px; }
+        </style>
+      </head>
+      <body>
+        <h2>OpenAI API配置</h2>
+        <form id="configForm">
+          <label for="apiKey">API密钥:</label>
+          <input type="password" id="apiKey" value="${config.apiKey || ''}" placeholder="输入您的OpenAI API密钥" />
+          <div class="note">注意：如果您没有API密钥，可以从 OpenAI 网站获取</div>
+          
+          <label for="apiBaseUrl">API基础URL:</label>
+          <input type="text" id="apiBaseUrl" value="${config.apiBaseUrl || 'https://api.openai.com/v1'}" placeholder="默认为 https://api.openai.com/v1" />
+          
+          <label for="modelName">模型名称:</label>
+          <input type="text" id="modelName" value="${config.modelName || 'gpt-4-vision-preview'}" placeholder="默认为 gpt-4-vision-preview" />
+          
+          <button type="submit">保存配置</button>
+        </form>
+        
+        <script>
+          document.getElementById('configForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const config = {
+              apiKey: document.getElementById('apiKey').value,
+              apiBaseUrl: document.getElementById('apiBaseUrl').value,
+              modelName: document.getElementById('modelName').value
+            };
+            window.electron.updateConfig(config);
+          });
+          
+          window.electron.onConfigUpdated((result) => {
+            alert(result.message);
+            if (result.success) {
+              window.close();
+            }
+          });
+        </script>
+      </body>
+    </html>
+  `);
+  
+  return true;
 });
