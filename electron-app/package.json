@@ -20,7 +20,12 @@
     "axios": "^1.6.5",
     "electron-is-dev": "^2.0.0",
     "electron-log": "^5.0.1",
-    "electron-updater": "^6.1.7"
+    "electron-updater": "^6.1.7",
+    "form-data": "^4.0.0",
+    "fs-extra": "^11.2.0",
+    "node-fetch": "^2.7.0",
+    "glob": "^10.3.10",
+    "mime-types": "^2.1.35"
   },
   "build": {
     "appId": "com.vlmclassifier.app",
@@ -31,7 +36,8 @@
     "files": [
       "src/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "package-lock.json"
     ],
     "mac": {
       "category": "public.app-category.utilities",
@@ -40,5 +46,8 @@
     "win": {
       "target": ["nsis"]
     }
+  },
+  "electronDownload": {
+    "mirror": "https://npmmirror.com/mirrors/electron/"
   }
 }
